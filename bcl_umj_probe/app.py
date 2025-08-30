@@ -31,12 +31,16 @@ probe_utils = Probe()
 client_session = aiohttp.ClientSession()
 net_utils = NetUtil()
 
+prb_action_map: dict[str, Callable[[dict], object]] = {
+    "lcldt": probe_utils.collect_local_stats,
+    "rgrdt": probe_utils.gen_probe_register_data
+}
+
 dscv_action_map: dict[str, Callable[[dict], object]] = {
     "dscv_full" : net_utils.full_discovery,
     "scan_ack": net_discovery.scan_ack,
     "scan_ip": net_discovery.scan_ip,
     "scan_xmas": net_discovery.scan_xmas,
-    "lcldt": probe_utils.collect_local_stats,
     "dscv_arp": net_discovery.dscv_arp,
     "dscv_dhcp": net_discovery.dscv_dhcp,
     "dscv_tcp": net_discovery.dscv_tcp,
@@ -119,6 +123,12 @@ def test(tool_data: ToolCall):
 @api.post("/api/wifi")
 def wifi(tool_data: ToolCall):
     handler = wifi_action_map.get(tool_data.action)
+    if handler and tool_data.params is not None:
+            ans, unans = handler(**tool_data.params)
+
+@api.post("/api/prb")
+def wifi(tool_data: ToolCall):
+    handler = prb_action_map.get(tool_data.action)
     if handler and tool_data.params is not None:
             ans, unans = handler(**tool_data.params)
 

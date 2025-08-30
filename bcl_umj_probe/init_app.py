@@ -1,12 +1,9 @@
 from fastapi import FastAPI
-from fastmcp import FastMCP
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import APIKeyHeader
-
 import redis
 from utils.Probe import Probe
 import logging
-from utils.RedisDB import RedisDB
 import uuid
 from passlib.hash import bcrypt
 import sys
@@ -45,6 +42,7 @@ else:
 # Dependency function to validate the API key
 def validate_api_key(key: str = Depends(api_key_header)):
     pong = r.ping() 
+    logger.info(pong)
     cursor, keys = r.scan(cursor=cursor, match=f'*{hostname}*')
     if keys:
         all_data = {}
