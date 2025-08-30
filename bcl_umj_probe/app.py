@@ -111,24 +111,24 @@ def dscv(tool_data: ToolCall):
             ans, unans = handler(**tool_data.params)
 
 @api.post("/api/test")
-def dscv(tool_data: ToolCall):
+def test(tool_data: ToolCall):
     handler = net_test_action_map.get(tool_data.action)
     if handler and tool_data.params is not None:
             ans, unans = handler(**tool_data.params)
 
 @api.post("/api/wifi")
-def dscv(tool_data: ToolCall):
+def wifi(tool_data: ToolCall):
     handler = wifi_action_map.get(tool_data.action)
     if handler and tool_data.params is not None:
             ans, unans = handler(**tool_data.params)
 
-mcp = FastMCP.from_fastapi(app=api, name='Network Util MCP')
+mcp = FastMCP.from_fastapi(app=api, name='umjiniti Network Util MCP')
 
 mcp_app = mcp.http_app(path='/mcp')
 
-api = FastAPI(title='Network Util API', lifespan=mcp_app.lifespan, dependencies=[Depends(validate_api_key)])
+api = FastAPI(title='umjiniti Network Util API', lifespan=mcp_app.lifespan, dependencies=[Depends(validate_api_key)])
 
-api.mount("/llm/", mcp_app)
+api.mount("/llm", mcp_app)
 
 # Run with: uvicorn app:api --host 0.0.0.0 --port 8000
 
