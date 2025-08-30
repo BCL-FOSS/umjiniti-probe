@@ -1,16 +1,16 @@
-from init_app import (api, mcp)
+from init_app import (api, logger, validate_api_key)
 from typing import Callable
 from utils.network_utils.NetworkInfo import NetworkInfo
 from utils.network_utils.NetworkDiscovery import NetworkDiscovery
 from utils.network_utils.NetworkTest import NetworkTest
 from utils.Probe import Probe
 from utils.NetUtil import NetUtil
-import logging
 import aiohttp
 from utils.RedisDB import RedisDB
 from utils.Probe import Probe
 import httpx
-
+from fastmcp import FastMCP
+from fastapi import FastAPI, Depends
 from pydantic import BaseModel
 
 class Init(BaseModel):
@@ -20,9 +20,9 @@ class Init(BaseModel):
     site: str | None = None
     enroll: bool
 
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger('passlib').setLevel(logging.ERROR)
-logger = logging.getLogger(__name__)
+class ToolCall(BaseModel):
+    action: str | None = None
+    params: dict | None = None
 
 network_info = NetworkInfo()
 net_discovery = NetworkDiscovery()
@@ -31,19 +31,30 @@ probe_utils = Probe()
 client_session = aiohttp.ClientSession()
 net_utils = NetUtil()
 
-# Probe network monitoring & survey functions
-action_map: dict[str, Callable[[dict], object]] = {
-    "dscv" : net_utils.full_discovery,
-    "dscv_host": net_utils.net_host_scan,
+dscv_action_map: dict[str, Callable[[dict], object]] = {
+    "dscv_full" : net_utils.full_discovery,
+    "scan_ack": net_discovery.scan_ack,
+    "scan_ip": net_discovery.scan_ip,
+    "scan_xmas": net_discovery.scan_xmas,
+    "lcldt": probe_utils.collect_local_stats,
+    "dscv_arp": net_discovery.dscv_arp,
+    "dscv_dhcp": net_discovery.dscv_dhcp,
+    "dscv_tcp": net_discovery.dscv_tcp,
+    "dscv_udp": net_discovery.dscv_udp
+}
+
+net_test_action_map: dict[str, Callable[[dict], object]] = {
     "spdtst" : net_test.start_iperf,
     "trcrt_dns" : net_test.traceroute_dns,
     "trcrt_syn" : net_test.traceroute_syn,
-    "trcrt_udp" : net_test.traceroute_udp,
-    "lcldt": probe_utils.collect_local_stats,
+    "trcrt_udp" : net_test.traceroute_udp
+}
+
+wifi_action_map: dict[str, Callable[[dict], object]] = {
     "wifi_srvy_on": net_utils.start_survey,
     "wifi_srvy_off": net_utils.stop_survey,
     "wifi_srvy_rprt": net_utils.generate_report,   
-    "wifi_srvy_json": net_utils.get_survey_json,
+    "wifi_srvy_json": net_utils.get_survey_json
 }
 
 async def _make_http_request(cmd: str, url: str, payload: dict = {}, headers: dict = {}):
@@ -88,14 +99,36 @@ async def init(init_data: Init):
         return 400
     else:
         probe_data = await prb_db.get_all_data(match=f'*{hstnm}*')
+        logger.info(probe_data)
 
         if probe_data.items():
             await enrollment(payload=probe_data)     
 
-@mcp.tool
-def query_database(query: str) -> dict:
-    """Run a database query"""
-    return {"result": "data"}
+@api.post("/api/dscv")
+def dscv(tool_data: ToolCall):
+    handler = dscv_action_map.get(tool_data.action)
+    if handler and tool_data.params is not None:
+            ans, unans = handler(**tool_data.params)
+
+@api.post("/api/test")
+def dscv(tool_data: ToolCall):
+    handler = net_test_action_map.get(tool_data.action)
+    if handler and tool_data.params is not None:
+            ans, unans = handler(**tool_data.params)
+
+@api.post("/api/wifi")
+def dscv(tool_data: ToolCall):
+    handler = wifi_action_map.get(tool_data.action)
+    if handler and tool_data.params is not None:
+            ans, unans = handler(**tool_data.params)
+
+mcp = FastMCP.from_fastapi(app=api, name='Network Util MCP')
+
+mcp_app = mcp.http_app(path='/mcp')
+
+api = FastAPI(title='Network Util API', lifespan=mcp_app.lifespan, dependencies=[Depends(validate_api_key)])
+
+api.mount("/llm/", mcp_app)
 
 # Run with: uvicorn app:api --host 0.0.0.0 --port 8000
 

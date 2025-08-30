@@ -63,10 +63,12 @@ class NetworkTest(Network):
               
             case 'sr':
                 server = iperf3.Server()
-                server.bind_address = '10.10.10.10'
+                server.bind_address = '0.0.0.0'
                 server.port = server_port
-                server.verbose = False
+                server.verbose = True
+                server.json_output=True
                 server.run()
+
                 """
                 while True:
                    server.run()

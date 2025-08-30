@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastmcp import FastMCP
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import APIKeyHeader
-from fastmcp import FastMCP
+
 import redis
 from utils.Probe import Probe
 import logging
@@ -61,9 +61,6 @@ def validate_api_key(key: str = Depends(api_key_header)):
                 )
         else:
             return key
-    
-mcp = FastMCP("API Tools")
-api = FastAPI(dependencies=[Depends(validate_api_key)], lifespan=mcp.lifespan)
 
-# Mount MCP at /mcp
-api.mount("/mcp/", mcp.http_app())
+api = FastAPI()
+
