@@ -1,0 +1,14 @@
+websockets
+scapy
+requests
+psutil
+iperf3
+pyshark
+aiohttp
+manuf
+pyvis
+pysnmp
+plotly
+gpsd-py3
+matplotlib
+fpdf
