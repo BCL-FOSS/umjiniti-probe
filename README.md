@@ -12,6 +12,8 @@ $ sudo apt-get install -y \
 # Install FPM (from official docs)
 $ gem install fpm
 
+$ apt install python3.12-venv
+
 $ sudo chmod +x build_package.sh
 
 $ sudo ./build_package.sh  "Usage: $0 [--deb | --rpm | --pkg | --txz]"
