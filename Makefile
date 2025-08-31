@@ -37,7 +37,7 @@ build-deb:
 		--depends python3 --depends python3-pip --depends python3-venv \
 		--depends iperf3 --depends tshark --depends redis --depends traceroute --depends p0f \
 		scripts/bcl-umj-probe.service=etc/systemd/system/bcl-umj-probe.service \
-		.=$(PREFIX)
+		./=$(PREFIX)
 
 build-rpm:
 	fpm -s dir -t rpm -n $(APP_NAME) -v $(VERSION) -a $(ARCH) \
@@ -52,7 +52,7 @@ build-rpm:
 		--depends python3 --depends python3-pip --depends python3-venv \
 		--depends iperf3 --depends tshark --depends redis --depends traceroute --depends p0f \
 		scripts/bcl-umj-probe.service=etc/systemd/system/bcl-umj-probe.service \
-		.=$(PREFIX)
+		./=$(PREFIX)
 
 build-pkg:
 	fpm -s dir -t freebsd -n $(APP_NAME) -v $(VERSION) -a $(ARCH) \
@@ -63,7 +63,7 @@ build-pkg:
 		--after-install scripts/postinstall.sh \
 		--config-files /etc/rc.d/bcl-umj-probe \
 		scripts/bcl-umj-probe=/etc/rc.d/bcl-umj-probe \
-		.=$(PREFIX)
+		./=$(PREFIX)
 
 build-txz:
 	fpm -s dir -t freebsd -n $(APP_NAME) -v $(VERSION) -a amd64 \
@@ -74,7 +74,7 @@ build-txz:
 		--after-install scripts/postinstall.sh \
 		--config-files /etc/rc.d/bcl-umj-probe \
 		scripts/bcl-umj-probe=/etc/rc.d/bcl-umj-probe \
-		.=$(PREFIX)
+		./=$(PREFIX)
 
 
 .PHONY: build-deb build-rpm build-pkg build-txz build-venv clean
