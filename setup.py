@@ -1,25 +1,30 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='bcl-umj-probe',
-    version='1.0.0',
-    packages=find_packages(),
+    name="bcl-umj-probe",
+    version="1.0.0",
+    description="open source probe enabling agentic AI automation into any production network.",
+    author="Baugh Consulting & Lab L.l.C.",
+    packages=find_packages(where=".", exclude=("tests", "tests.*")),
     include_package_data=True,
+    python_requires=">=3.8",
     install_requires=[
-        'websockets',
-        'scapy',
-        'requests',
-        'psutil',
-        'iperf3',
-        'pyshark',
-        'aiohttp',
-        'manuf',
-        'pyvis',
-        'pysnmp'
+        "fastapi",
+        "uvicorn[standard]",
+        "websockets",
+        "scapy",
+        "requests",
+        "psutil",
+        "iperf3",
+        "pyshark",
+        "aiohttp",
+        "manuf",
+        "pyvis",
+        "pysnmp",
     ],
-    entry_points={
-        'console_scripts': [
-            'bcl-umj-probe=bcl_umj_probe.client:run',
-        ],
-    },
+    # no console_scripts: systemd/rc.d call uvicorn directly
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "Operating System :: OS Independent",
+    ],
 )
