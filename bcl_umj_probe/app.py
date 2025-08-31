@@ -11,6 +11,9 @@ import httpx
 from fastmcp import FastMCP
 from fastapi import FastAPI, Depends
 from pydantic import BaseModel
+import uuid
+from passlib.hash import bcrypt
+from httpx import Cookies
 
 class Init(BaseModel):
     api_key: str | None = None
@@ -59,10 +62,11 @@ wifi_action_map: dict[str, Callable[[dict], object]] = {
     "wifi_srvy_json": net_utils.get_survey_json
 }
 
-async def _make_http_request(cmd: str, url: str, payload: dict = {}, headers: dict = {}):
+async def _make_http_request(cmd: str, url: str, payload: dict = {}, headers: dict = {}, cookies: str = ''):
     async with httpx.AsyncClient() as client:
         match cmd:
             case 'p':
+                client.cookies.set("access_token", value=cookies)
                 resp = await client.post(
                     url,
                     json=payload,
@@ -83,30 +87,55 @@ def status():
 
 @api.post("/api/init")
 async def init(init_data: Init):
-    async def enrollment(payload={}):
+    async def enrollment(payload: dict = {}):
         headers = {'X-UMJ-WFLW-API-KEY': init_data.api_key}
-        enroll_url=f"{init_data.url}?usr={init_data.usr}&site={init_data.site}"
 
-        resp_data = await _make_http_request(cmd='g', url=init_data.url, headers=headers)
+        post_headers = {'X-UMJ-WFLW-API-KEY': init_data.api_key,
+                        'Content-Type': 'application/json'}
+        
+        init_url=f"{init_data.url}/init?usr={init_data.usr}"
+
+        enroll_url=f"{init_data.url}/enroll?usr={init_data.usr}&site={init_data.site}"
+
+        resp_data = await _make_http_request(cmd='g', url=init_url, headers=headers)
         if resp_data.status_code == 200:
             access_token = resp_data.cookies.get('access_token')
+            
             logger.info(access_token)
-            return access_token
-        
+            enroll_rqst = await _make_http_request(cmd='p', url=enroll_url, headers=post_headers, cookies=access_token, payload=payload)
+            if enroll_rqst.status_code == 200:
+                return 200
+            else:
+                return 400
+                 
     prb_db = RedisDB(hostname='localhost', port='6369')
     await prb_db.connect_db()
-
-    # Set probe info data
     prb_id, hstnm = probe_utils.gen_probe_register_data()
 
-    if init_data.enroll is False or init_data.api_key and init_data.usr and init_data.url and init_data.site is None or "".strip():
-        return 400
-    else:
+    if await prb_db.get_all_data(match=f'*{hstnm}*', cnfrm=True) is True:
         probe_data = await prb_db.get_all_data(match=f'*{hstnm}*')
         logger.info(probe_data)
-
-        if probe_data.items():
-            await enrollment(payload=probe_data)     
+        if init_data.enroll is False or init_data.api_key or init_data.usr or init_data.url or init_data.site is None or "".strip(): 
+            return probe_data
+        else:
+           if await enrollment(payload=probe_data) != 200:
+                return {"Error":"occurred during probe adoption"}, 400
+           else:
+                return probe_data
+    else:
+        probe_data=probe_utils.collect_local_stats(id=f"{id}", hostname=hstnm)
+        probe_data['api_key'] = bcrypt.hash(str(uuid.uuid4()))
+        logger.info(f"API Key for umjiniti probe {id}: {probe_data['api_key']}. Store this is a secure location as it will not be displayed again.")
+        logger.info(probe_data)
+    
+        if await prb_db.upload_db_data(id=f"{prb_id}", data=probe_data) is not None:
+             if init_data.enroll is False or init_data.api_key or init_data.usr or init_data.url or init_data.site is None or "".strip():
+                return probe_data
+             else:
+                if await enrollment(payload=probe_data) != 200:
+                    return {"Error":"occurred during probe adoption"}, 400
+                else:
+                    return probe_data
 
 @api.post("/api/dscv")
 def dscv(tool_data: ToolCall):
