@@ -5,7 +5,6 @@ from utils.network_utils.NetworkDiscovery import NetworkDiscovery
 from utils.network_utils.NetworkTest import NetworkTest
 from utils.Probe import Probe
 from utils.NetUtil import NetUtil
-import aiohttp
 from utils.RedisDB import RedisDB
 from utils.Probe import Probe
 import httpx
@@ -28,7 +27,6 @@ network_info = NetworkInfo()
 net_discovery = NetworkDiscovery()
 net_test = NetworkTest()
 probe_utils = Probe()
-client_session = aiohttp.ClientSession()
 net_utils = NetUtil()
 
 prb_action_map: dict[str, Callable[[dict], object]] = {
@@ -91,7 +89,9 @@ async def init(init_data: Init):
 
         resp_data = await _make_http_request(cmd='g', url=init_data.url, headers=headers)
         if resp_data.status_code == 200:
-            return resp_data.cookies.get('access_token')
+            access_token = resp_data.cookies.get('access_token')
+            logger.info(access_token)
+            return access_token
         
     prb_db = RedisDB(hostname='localhost', port='6369')
     await prb_db.connect_db()

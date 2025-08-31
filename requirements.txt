@@ -12,3 +12,8 @@ plotly
 gpsd-py3
 matplotlib
 fpdf
+httpx
+fastmcp
+fastapi
+redis
+passlib
