@@ -61,7 +61,7 @@ install_dependencies() {
 
     # Install all necessary packages for probe
     echo "Installing packages: $PACKAGE_LIST"
-    $PACKAGE_MANAGER install -y $PACKAGE_LIST
+    sudo $PACKAGE_MANAGER install -y $PACKAGE_LIST
 
     # Python setup
     echo "Checking for Python installation..."
