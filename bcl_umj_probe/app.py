@@ -31,6 +31,7 @@ net_discovery = NetworkDiscovery()
 net_test = NetworkTest()
 probe_utils = Probe()
 net_utils = NetUtil()
+prb_db = RedisDB(hostname='localhost', port='6379')
 
 prb_action_map: dict[str, Callable[[dict], object]] = {
     "lcldt": probe_utils.collect_local_stats,
@@ -108,7 +109,7 @@ async def init(init_data: Init):
             else:
                 return 400
                  
-    prb_db = RedisDB(hostname='localhost', port='6369')
+    
     await prb_db.connect_db()
     prb_id, hstnm = probe_utils.gen_probe_register_data()
 

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Define the API key header scheme (e.g., header name "x-api-key")
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=True)
-r = redis.Redis(host='localhost', port=6369)
+r = redis.Redis(host='localhost', port=6379)
 
 pong = r.ping()
 
