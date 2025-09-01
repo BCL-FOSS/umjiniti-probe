@@ -1,5 +1,5 @@
-from network_utils.NetworkDiscovery import NetworkDiscovery
-from network_utils.NetworkSNMP import NetworkSNMP
+from utils.network_utils.NetworkDiscovery import NetworkDiscovery
+from utils.network_utils.NetworkSNMP import NetworkSNMP
 import ipaddress
 from scapy.all import *
 from scapy import *
@@ -9,7 +9,7 @@ from scapy.layers.l2 import *
 from scapy.layers.dns import *
 import os
 import time
-from network_utils.NetworkWiFi import NetworkkWiFi
+from utils.network_utils.NetworkWiFi import NetworkkWiFi
 import asyncio
 import asyncio
 import os

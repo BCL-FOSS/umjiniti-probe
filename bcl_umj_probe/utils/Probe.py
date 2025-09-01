@@ -1,7 +1,7 @@
 import uuid
 import socket
 from utils.network_utils.NetworkInfo import NetworkInfo
-from network_utils.NetworkWiFi import NetworkkWiFi
+from utils.network_utils.NetworkWiFi import NetworkkWiFi
 import subprocess
 import platform
 import logging

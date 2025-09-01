@@ -19,7 +19,7 @@ import urllib.request
 import socket
 import fcntl
 import struct
-from base.Network import Network
+from network_utils.base.Network import Network
 
 
 class NetworkInfo(Network):
