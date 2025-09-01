@@ -8,7 +8,7 @@ from scapy.layers.l2 import *
 from scapy.utils import mac2str
 import pyshark
 import manuf
-from network_utils.base.Network import Network
+from utils.network_utils.base.Network import Network
 from typing import Callable
 
 class NetworkDiscovery(Network):

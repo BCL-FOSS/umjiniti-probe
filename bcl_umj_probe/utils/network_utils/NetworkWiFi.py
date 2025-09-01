@@ -13,7 +13,7 @@ import time
 import json
 import csv
 import os
-from network_utils.base.Network import Network
+from utils.network_utils.base.Network import Network
 from datetime import datetime, timedelta
 
 class NetworkkWiFi(Network):

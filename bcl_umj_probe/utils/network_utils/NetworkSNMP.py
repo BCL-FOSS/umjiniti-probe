@@ -6,7 +6,7 @@ from scapy.tools import *
 from scapy.layers.inet import *
 from scapy.layers.l2 import *
 import pyshark
-from network_utils.base.Network import Network
+from utils.network_utils.base.Network import Network
 from pysnmp.entity import engine, config
 from pysnmp.carrier.asyncio.dgram import udp
 from pysnmp.proto.api import v2c

@@ -3,7 +3,7 @@ import platform
 import subprocess
 import requests
 import iperf3
-from network_utils.base.Network import Network
+from utils.network_utils.base.Network import Network
 from scapy.all import *
 from scapy import *
 from scapy.tools import *
