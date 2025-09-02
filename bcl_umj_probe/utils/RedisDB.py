@@ -1,6 +1,5 @@
 import redis.asyncio as redis
 import json
-from quart import flash
 import logging
 
 class RedisDB:
