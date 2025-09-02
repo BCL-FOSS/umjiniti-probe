@@ -30,7 +30,7 @@ class NetworkkWiFi(Network):
         # Interface settings
         self.MONITOR_INTERFACE = None
         self.BASE_INTERFACE = interface
-        self.job_id = str(uuid.uuid4()+"-"+datetime.today().strftime('%Y-%m-%d'))
+        self.job_id = str(str(uuid.uuid4())+"-"+datetime.today().strftime('%Y-%m-%d'))
         self.SURVEY_RESULTS_DIR=os.path.join(os.getcwd(), f"/{self.job_id}_survey_results")
 
         if os.path.exists(self.SURVEY_RESULTS_DIR) is False:
