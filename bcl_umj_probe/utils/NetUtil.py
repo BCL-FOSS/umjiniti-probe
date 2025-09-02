@@ -20,22 +20,26 @@ matplotlib.use('Agg')
 import time
 from io import BytesIO
 from asyncio import Task
+import logging
 
 class NetUtil():
     surveying = False
-
+    logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger('passlib').setLevel(logging.ERROR)
+        
     def __init__(self, interface: str):
         self.iface = interface
         self.wifi=NetworkkWiFi(interface=self.iface)
         self.discovery = NetworkDiscovery()
         self.snmp = NetworkSNMP()
         self.ROLE_PORTS = { 
-            # Ports that help fingerprint devices
+            # Ports that help fingerself.logger devices
             "firewall": [22, 443],
             "switch": [161, 22],
             "server": [22, 80, 443, 3389],
             "endpoint": [80, 443]
         }
+        self.logger = logging.getLogger(__name__)
 
     def predict_role(self, open_ports, snmp_info):
         """Predict role based on open ports and SNMP data."""
@@ -77,7 +81,7 @@ class NetUtil():
                     open_ports.append(pkt[0][TCP].dport)
 
             except Exception as e:
-                print(f"TCP scan error on {ip}: {e}")
+                self.logger(f"TCP scan error on {ip}: {e}")
 
             # Step 3: SNMP discovery
             snmp_info = {}
@@ -88,7 +92,7 @@ class NetUtil():
                         "if_descr": self.snmp.snmp_get(ip, self.snmp.SNMP_OIDS["if_descr"])
                     }
             except Exception as e:
-                print(f"SNMP error on {ip}: {e}")
+                self.logger(f"SNMP error on {ip}: {e}")
 
             # Step 4: Predict role
             role = self.predict_role(open_ports, snmp_info)

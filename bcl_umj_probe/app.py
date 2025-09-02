@@ -1,9 +1,8 @@
 from init_app import (api, logger, validate_api_key)
 from typing import Callable
-from utils.network_utils.NetworkInfo import NetworkInfo
+from utils.network_utils.ProbeInfo import ProbeInfo
 from utils.network_utils.NetworkDiscovery import NetworkDiscovery
 from utils.network_utils.NetworkTest import NetworkTest
-from utils.Probe import Probe
 from utils.NetUtil import NetUtil
 from utils.RedisDB import RedisDB
 import httpx
@@ -13,6 +12,7 @@ from pydantic import BaseModel
 import uuid
 from passlib.hash import bcrypt
 from httpx import Cookies
+from typing import Annotated
 
 class Init(BaseModel):
     api_key: str | None = None
@@ -25,16 +25,17 @@ class ToolCall(BaseModel):
     action: str | None = None
     params: dict | None = None
 
-network_info = NetworkInfo()
 net_discovery = NetworkDiscovery()
 net_test = NetworkTest()
-probe_utils = Probe()
+probe_utils = ProbeInfo()
 net_utils = NetUtil(interface='')
 prb_db = RedisDB(hostname='localhost', port='6379')
 
 prb_action_map: dict[str, Callable[[dict], object]] = {
-    "lcldt": probe_utils.collect_local_stats,
-    "rgrdt": probe_utils.gen_probe_register_data
+    "prbdta": probe_utils.get_probe_data,
+    "prbprc": probe_utils.get_processes_by_names,
+    "prbprt": probe_utils.open_listening_ports,
+    "prbifc": probe_utils.get_iface_ips
 }
 
 dscv_action_map: dict[str, Callable[[dict], object]] = {
@@ -123,7 +124,7 @@ async def init(init_data: Init):
            else:
                 return probe_data
     else:
-        probe_data=probe_utils.collect_local_stats(id=f"{id}", hostname=hstnm)
+        probe_data=probe_utils.collect_local_stats(id=f"{prb_id}", hostname=hstnm)
         probe_data['api_key'] = bcrypt.hash(str(uuid.uuid4()))
         logger.info(f"API Key for umjiniti probe {id}: {probe_data['api_key']}. Store this is a secure location as it will not be displayed again.")
         logger.info(probe_data)
@@ -139,15 +140,23 @@ async def init(init_data: Init):
 
 @api.post("/api/dscv")
 def dscv(tool_data: ToolCall):
+    """
+    Use for network device mapping/discovery, target host identification and dhcp server identification.
+    """
     handler = dscv_action_map.get(tool_data.action)
     if handler and tool_data.params is not None:
-            ans, unans = handler(**tool_data.params)
+        data = handler(**tool_data.params)
+        return data
 
 @api.post("/api/test")
 def test(tool_data: ToolCall):
+    """
+    Use to perform network speedtest between two probes using the probe as either a server or client (uses iperf to perform the speedtest) and traceroutes such as SYN, UDP (to trace UDP applications) and DNS.
+    """
     handler = net_test_action_map.get(tool_data.action)
     if handler and tool_data.params is not None:
-            ans, unans = handler(**tool_data.params)
+        data = handler(**tool_data.params)
+        return data
 
 @api.post("/api/wifi")
 def wifi(tool_data: ToolCall):
@@ -157,9 +166,14 @@ def wifi(tool_data: ToolCall):
 
 @api.post("/api/prb")
 def wifi(tool_data: ToolCall):
+    """
+    Use for host system data such as local stats, running processes, open listening ports and interfaces with assosciated IP addresses.
+    """
+
     handler = prb_action_map.get(tool_data.action)
     if handler and tool_data.params is not None:
-            ans, unans = handler(**tool_data.params)
+        data = handler(**tool_data.params)
+        return data
 
 mcp = FastMCP.from_fastapi(app=api, name='umjiniti Network Util MCP')
 

@@ -86,45 +86,50 @@ class NetworkTest(Network):
             port (int): service port to test (default HTTP)
 
         Returns:
-            ans (SndRcvList): list of routers identified during trace
+            router_list (str): list of routers identified during trace
         """
         ans, unans = sr(IP(dst=dest,ttl=(1,10))/TCP(dport=port,flags="S", options=[('Timestamp',(0,0))]))
-        ans.summary( lambda s,r: r.sprintf("%IP.src%\t{ICMP:%ICMP.type%}\t{TCP:%TCP.flags%}"))
+        #ans.summary(lambda s,r: r.sprintf("%IP.src%\t{ICMP:%ICMP.type%}\t{TCP:%TCP.flags%}"))
+
+        router_list = ans.make_table(lambda s,r: (s.dst, s.ttl, r.src))
         
-        return ans if ans else None
+        return router_list if not None else None
     
-    def traceroute_udp(self, target: str, app: None):
+    def traceroute_udp(self, target: str, query: str ='google.com'):
         """
-        Traces UDP applications
+        Traces UDP applications. Tracerouting an UDP application like we do with TCP is not reliable, because there’s no handshake.
+        We need to give an applicative payload (DNS, ISAKMP, NTP, etc.) to deserve an answer
 
         Args:
             dest (str): host to trace route to
 
-            port (int): service port to test (default HTTP)
+            query (str): domain for query. defaults to google.com
 
         Returns:
             router_list (str): list of routers identified during trace
         """
 
-        res, unans = sr(IP(dst=target, ttl=(1,20)) /UDP()/app)
+        #res, unans = sr(IP(dst=target, ttl=(1,20)) /UDP()/app)
+
+        res, unans = sr(IP(dst=target, ttl=(1,20))/UDP()/DNS(qd=DNSQR(qname=query)))
 
         router_list = res.make_table(lambda s,r: (s.dst, s.ttl, r.src))
         return router_list if not None else None
     
-    def traceroute_dns(self, target: str, query: str):
+    def traceroute_dns(self, target: list, query: str = 'google.com'):
         """
         Performs DNS traceroute
 
         Args:
             target (str): host to trace route to
 
-            query (str): domain for query
+            query (str): domain for query. defaults to google.com
 
         Returns:
             router_list (str): list of routers identified during trace
         """
         trc_result, packet_list = traceroute(target=target,l4=UDP(sport=RandShort())/DNS(qd=DNSQR(qname=query)))
-
+     
         router_list = trc_result.make_lined_table(lambda s,r: (s.dst, r.src))
         return router_list if not None else None
 

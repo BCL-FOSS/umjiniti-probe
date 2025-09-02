@@ -25,7 +25,7 @@ install_dependencies() {
             fi
 
             PACKAGE_MANAGER="apt"
-            PACKAGE_LIST="tshark tcpdump gpsd gpsd-clients iputils-ping iperf3 aircrack-ng libpcap-dev p0f traceroute"
+            PACKAGE_LIST="tshark tcpdump gpsd gpsd-clients iputils-ping iperf3 aircrack-ng libpcap-dev p0f traceroute graphviz"
             ;;
         rhel|centos|fedora|rocky|almalinux)
             sudo dnf update -y
@@ -39,7 +39,7 @@ install_dependencies() {
                 echo "traceroute is already installed."
             fi
             PACKAGE_MANAGER="dnf"
-            PACKAGE_LIST="tshark tcpdump gpsd gpsd-clients iputils-ping iperf3 aircrack-ng libpcap-dev p0f traceroute"
+            PACKAGE_LIST="tshark tcpdump gpsd gpsd-clients iputils-ping iperf3 aircrack-ng libpcap-dev p0f traceroute graphviz"
             ;;
         freebsd)
             sudo pkg update -y
@@ -87,10 +87,10 @@ install_dependencies() {
     # python3-venv setup
     echo "Checking for python3-venv installation..."
     if ! python3 -m venv --help > /dev/null 2>&1; then
-        echo "Installing python3-venv..."
+        echo "Installing python3.12-venv..."
         case "$DISTRO" in
-            debian|ubuntu) sudo apt install -y python3-venv ;;
-            rhel|centos|fedora|rocky|almalinux) sudo yum install -y python3-venv || sudo dnf install -y python3-venv ;;
+            debian|ubuntu) sudo apt install -y python3.12-venv ;;
+            rhel|centos|fedora|rocky|almalinux) sudo yum install -y python3.12-venv || sudo dnf install -y python3.12-venv ;;
             freebsd) sudo pkg install -y py39-virtualenv ;;
         esac
     fi

@@ -17,3 +17,6 @@ fastmcp
 fastapi
 redis
 passlib
+cartopy
+geoip2
+vpython
