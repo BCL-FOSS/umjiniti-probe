@@ -16,8 +16,6 @@ logging.getLogger('passlib').setLevel(logging.ERROR)
 
 class Probe:
     def __init__(self) -> None:
-        self.main_network=NetworkInfo()
-        self.wifi=NetworkkWiFi()
         self.USE_DB=True
         self.logger = logging.getLogger(__name__)
         

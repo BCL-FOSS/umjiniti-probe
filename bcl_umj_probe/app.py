@@ -30,7 +30,7 @@ network_info = NetworkInfo()
 net_discovery = NetworkDiscovery()
 net_test = NetworkTest()
 probe_utils = Probe()
-net_utils = NetUtil()
+net_utils = NetUtil(interface='')
 prb_db = RedisDB(hostname='localhost', port='6379')
 
 prb_action_map: dict[str, Callable[[dict], object]] = {
