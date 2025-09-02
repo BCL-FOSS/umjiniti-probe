@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import APIKeyHeader
 import redis
-from utils.Probe import Probe
+from utils.network_utils.ProbeInfo import ProbeInfo
 import logging
 import uuid
 from passlib.hash import bcrypt
@@ -20,7 +20,7 @@ pong = r.ping()
 
 logger.info(pong)
 
-probe_utils = Probe()
+probe_utils = ProbeInfo()
 
 # Dependency function to validate the API key
 def validate_api_key(key: str = Depends(api_key_header)):
