@@ -1,5 +1,60 @@
 #!/bin/sh
 
+open_firewall_port() {
+    DISTRO=$1
+    echo "Opening port 8000 on $DISTRO..."
+
+    case "$DISTRO" in
+        debian|ubuntu)
+            # UFW setup
+            if command -v ufw > /dev/null 2>&1; then
+                sudo ufw allow 8000/tcp
+                echo "Port 8000 opened in UFW."
+            else
+                echo "UFW not installed. Skipping UFW rule."
+            fi
+
+            # iptables setup
+            if command -v iptables > /dev/null 2>&1; then
+                sudo iptables -A INPUT -p tcp --dport 8000 -j ACCEPT
+                echo "Port 8000 opened in iptables."
+
+                # Persist iptables rules if iptables-persistent is available
+                if command -v iptables-save > /dev/null 2>&1 && [ -d /etc/iptables ]; then
+                    sudo sh -c "iptables-save > /etc/iptables/rules.v4"
+                    echo "iptables rules saved to /etc/iptables/rules.v4."
+                fi
+            else
+                echo "iptables not installed. Skipping iptables rule."
+            fi
+            ;;
+        rhel|centos|fedora|rocky|almalinux)
+            if systemctl is-active --quiet firewalld; then
+                sudo firewall-cmd --permanent --add-port=8000/tcp
+                sudo firewall-cmd --reload
+                echo "Port 8000 opened in firewalld."
+            else
+                echo "firewalld not active. Skipping firewall rule."
+            fi
+            ;;
+        freebsd)
+            if [ -f /etc/pf.conf ]; then
+                if ! grep -q "port 8000" /etc/pf.conf; then
+                    echo "pass in proto tcp from any to any port 8000" | sudo tee -a /etc/pf.conf
+                    sudo service pf reload
+                    echo "Port 8000 opened in pf firewall."
+                fi
+            else
+                echo "pf not configured. Skipping firewall rule."
+            fi
+            ;;
+        *)
+            echo "Unknown or unsupported distribution. Skipping firewall setup."
+            ;;
+    esac
+}
+
+
 install_dependencies() {
     DISTRO=$1
     echo "Updating package repository..."

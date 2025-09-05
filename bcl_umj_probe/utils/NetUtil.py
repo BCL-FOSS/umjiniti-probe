@@ -1,5 +1,6 @@
 from utils.network_utils.NetworkDiscovery import NetworkDiscovery
 from utils.network_utils.NetworkSNMP import NetworkSNMP
+from utils.network_utils.ProbeInfo import ProbeInfo
 import ipaddress
 from scapy.all import *
 from scapy import *
@@ -57,7 +58,7 @@ class NetUtil():
             return "server"
         return "endpoint"
 
-    def full_discovery(self, action: str, interface: str, subnet: str):
+    async def full_discovery(self, action: str, interface: str, subnet: str):
         # Step 1: Layer 2 ARP Discovery
         devices_raw = self.discovery.discover_devices(iface=self.iface, action=action,
                                                 params={"interface": interface, "subnet_cidr": subnet})
@@ -86,10 +87,10 @@ class NetUtil():
             # Step 3: SNMP discovery
             snmp_info = {}
             try:
-                snmp_devices = self.snmp.discover_snmp_devices([ipaddress.ip_address(ip)])
+                snmp_devices = await self.snmp.discover_snmp_devices([ipaddress.ip_address(ip)])
                 if ip in snmp_devices:
                     snmp_info = {
-                        "if_descr": self.snmp.snmp_get(ip, self.snmp.SNMP_OIDS["if_descr"])
+                        "if_descr": await self.snmp.get(ip, self.snmp.OIDS["if_descr"])
                     }
             except Exception as e:
                 self.logger(f"SNMP error on {ip}: {e}")
@@ -205,6 +206,4 @@ class NetUtil():
         points = self.wifi.get_survey_json()
         if points is None:
             return None
-
-        
-
+    

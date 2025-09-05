@@ -1,35 +1,21 @@
-from init_app import (api, logger, validate_api_key)
+from init_app import (api, logger, validate_api_key, prb_db, probe_utils, net_utils, net_test, net_discovery, net_snmp)
 from typing import Callable
-from utils.network_utils.ProbeInfo import ProbeInfo
-from utils.network_utils.NetworkDiscovery import NetworkDiscovery
-from utils.network_utils.NetworkTest import NetworkTest
-from utils.NetUtil import NetUtil
-from utils.RedisDB import RedisDB
 import httpx
 from fastmcp import FastMCP
 from fastapi import FastAPI, Depends
 from pydantic import BaseModel
-import uuid
-from passlib.hash import bcrypt
-from httpx import Cookies
-from typing import Annotated
+import inspect
 
 class Init(BaseModel):
-    api_key: str | None = None
-    usr: str | None = None
-    url: str | None = None
-    site: str | None = None
+    api_key: str 
+    usr: str 
+    url: str 
+    site: str 
     enroll: bool
 
 class ToolCall(BaseModel):
-    action: str | None = None
-    params: dict | None = None
-
-net_discovery = NetworkDiscovery()
-net_test = NetworkTest()
-probe_utils = ProbeInfo()
-net_utils = NetUtil(interface='')
-prb_db = RedisDB(hostname='localhost', port='6379')
+    action: str 
+    params: dict 
 
 prb_action_map: dict[str, Callable[[dict], object]] = {
     "prbdta": probe_utils.get_probe_data,
@@ -61,6 +47,10 @@ wifi_action_map: dict[str, Callable[[dict], object]] = {
     "wifi_srvy_off": net_utils.stop_survey,
     "wifi_srvy_rprt": net_utils.generate_report,   
     "wifi_srvy_json": net_utils.get_survey_json
+}
+
+snmp_action_map: dict[str, Callable[[dict], object]] = {
+   
 }
 
 async def _make_http_request(cmd: str, url: str, payload: dict = {}, headers: dict = {}, cookies: str = ''):
@@ -109,7 +99,6 @@ async def init(init_data: Init):
             else:
                 return 400
                  
-    
     await prb_db.connect_db()
     prb_id, hstnm = probe_utils.gen_probe_register_data()
 
@@ -123,29 +112,18 @@ async def init(init_data: Init):
                 return {"Error":"occurred during probe adoption"}, 400
            else:
                 return probe_data
-    else:
-        probe_data=probe_utils.collect_local_stats(id=f"{prb_id}", hostname=hstnm)
-        probe_data['api_key'] = bcrypt.hash(str(uuid.uuid4()))
-        logger.info(f"API Key for umjiniti probe {id}: {probe_data['api_key']}. Store this is a secure location as it will not be displayed again.")
-        logger.info(probe_data)
-    
-        if await prb_db.upload_db_data(id=f"{prb_id}", data=probe_data) is not None:
-             if init_data.enroll is False or init_data.api_key or init_data.usr or init_data.url or init_data.site is None or "".strip():
-                return probe_data
-             else:
-                if await enrollment(payload=probe_data) != 200:
-                    return {"Error":"occurred during probe adoption"}, 400
-                else:
-                    return probe_data
 
 @api.post("/api/dscv")
-def dscv(tool_data: ToolCall):
+async def dscv(tool_data: ToolCall):
     """
     Use for network device mapping/discovery, target host identification and dhcp server identification.
     """
     handler = dscv_action_map.get(tool_data.action)
     if handler and tool_data.params is not None:
-        data = handler(**tool_data.params)
+        if inspect.iscoroutinefunction(handler):
+            data = await handler(**tool_data.params)
+        else:
+            data = handler(**tool_data.params)
         return data
 
 @api.post("/api/test")
@@ -169,7 +147,6 @@ def wifi(tool_data: ToolCall):
     """
     Use for host system data such as local stats, running processes, open listening ports and interfaces with assosciated IP addresses.
     """
-
     handler = prb_action_map.get(tool_data.action)
     if handler and tool_data.params is not None:
         data = handler(**tool_data.params)
