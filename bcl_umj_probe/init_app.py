@@ -39,6 +39,7 @@ async def probe_init():
         probe_data['api_key'] = bcrypt.hash(str(uuid.uuid4()))
         logger.info(f"API Key for umjiniti probe {id}: {probe_data['api_key']}. Store this is a secure location as it will not be displayed again.")
         logger.info(probe_data)
+        logger.info(probe_utils.get_ifaces())
     
         if await prb_db.upload_db_data(id=f"{prb_id}", data=probe_data) is not None:
             logger.info(f'probe data for {prb_id} generated successfully')

@@ -437,7 +437,6 @@ class ProbeInfo(Network):
             return 'net.inet.ip.fw.enable: 1' in result.stdout
         except:
             return False
-
     
 
     
