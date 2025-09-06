@@ -11,6 +11,8 @@ from utils.network_utils.NetworkDiscovery import NetworkDiscovery
 from utils.network_utils.NetworkTest import NetworkTest
 from utils.NetUtil import NetUtil
 from utils.network_utils.NetworkSNMP import NetworkSNMP
+import uuid
+from passlib.hash import bcrypt
 
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger('passlib').setLevel(logging.ERROR)
@@ -23,6 +25,16 @@ net_discovery = NetworkDiscovery()
 net_test = NetworkTest()
 net_utils = NetUtil(interface='')
 net_snmp = NetworkSNMP()
+
+def init_probe():
+    prb_id, hstnm = probe_utils.gen_probe_register_data()
+    probe_data=probe_utils.collect_local_stats(id=f"{prb_id}", hostname=hstnm)
+    probe_data['api_key'] = bcrypt.hash(str(uuid.uuid4()))
+    logger.info(f"API Key for umjiniti probe {id}: {probe_data['api_key']}. Store this is a secure location as it will not be displayed again.")
+    logger.info(probe_data)
+    logger.info(probe_utils.get_ifaces())
+
+    return prb_id, hstnm, probe_data
 
 # Dependency function to validate the API key
 def validate_api_key(key: str = Depends(api_key_header)):
@@ -74,6 +86,5 @@ def validate_api_key(key: str = Depends(api_key_header)):
             return key
 
 """
-
-
+prb_id, hstnm, probe_data = init_probe()
 api = FastAPI()

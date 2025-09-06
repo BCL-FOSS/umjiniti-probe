@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import os
-import sys
 import shutil
 import subprocess
 from pathlib import Path
@@ -9,9 +7,6 @@ from typing import List, Optional
 import logging
 from bcl_umj_probe.utils.RedisDB import RedisDB
 from bcl_umj_probe.utils.network_utils.ProbeInfo import ProbeInfo
-import uuid
-from passlib.hash import bcrypt
-import asyncio
 
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger('passlib').setLevel(logging.ERROR)
@@ -32,28 +27,6 @@ UVICORN_HOST = "0.0.0.0"
 UVICORN_PORT = "8000"
 UVICORN_WORKERS = "4"
 UVICORN_LOG_LEVEL = "info"
-
-async def probe_init():
-    await prb_db.connect_db()
-    ping = await prb_db.ping_db()
-    logger.info(f'redis db ping result: {ping}')
-    prb_id, hstnm = probe_utils.gen_probe_register_data()
-
-    if await prb_db.get_all_data(match=f'*{hstnm}*', cnfrm=True) is False:
-        probe_data=probe_utils.collect_local_stats(id=f"{prb_id}", hostname=hstnm)
-        probe_data['api_key'] = bcrypt.hash(str(uuid.uuid4()))
-        logger.info(f"API Key for umjiniti probe {id}: {probe_data['api_key']}. Store this is a secure location as it will not be displayed again.")
-        logger.info(probe_data)
-        logger.info(probe_utils.get_ifaces())
-    
-        if await prb_db.upload_db_data(id=f"{prb_id}", data=probe_data) is not None:
-            logger.info(f'probe data for {prb_id} generated successfully')
-            return True
-        else:
-            logger.error('Probe data generation failed')
-            return False
-    else:
-        return 0
 
 def require_tool(name: str) -> bool:
     if shutil.which(name):
@@ -148,7 +121,6 @@ def main() -> int:
                 - libpcap-dev 
                 - p0f 
                 - traceroute
-
                     """)
                 code = run_bash_script(DEPENDENCIES_SCRIPT, [])
                 logger.info(f"[i] Dependency script exited with code {code}")
@@ -156,11 +128,6 @@ def main() -> int:
                 logger.info(f"[i] Build script exited with code {code}")
                 pause()
             case '2':
-                logger.info('Initialize Probe')
-                result = asyncio.run(probe_init())
-                logger.info(result)
-                pause()
-            case '3':
                 print("\nStarting FastAPI app in venv. Press Ctrl-C to stop...\n")
                 code = run_uvicorn_in_venv()
                 logger.info(f"[i] Uvicorn exited with code {code}")

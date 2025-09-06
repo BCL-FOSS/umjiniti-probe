@@ -1,4 +1,4 @@
-from init_app import (api, logger, validate_api_key, prb_db, probe_utils, net_utils, net_test, net_discovery, net_snmp)
+from init_app import (api, logger, validate_api_key, prb_db, probe_utils, net_utils, net_test, net_discovery, net_snmp, probe_data, prb_id)
 from typing import Callable
 import httpx
 from fastmcp import FastMCP
@@ -100,18 +100,18 @@ async def init(init_data: Init):
                 return 400
                  
     await prb_db.connect_db()
-    prb_id, hstnm = probe_utils.gen_probe_register_data()
+    ping = await prb_db.ping_db()
+    logger.info(f'redis db ping result: {ping}')
 
-    if await prb_db.get_all_data(match=f'*{hstnm}*', cnfrm=True) is True:
-        probe_data = await prb_db.get_all_data(match=f'*{hstnm}*')
-        logger.info(probe_data)
+    if await prb_db.upload_db_data(id=f"{prb_id}", data=probe_data) is not None:
         if init_data.enroll is False or init_data.api_key or init_data.usr or init_data.url or init_data.site is None or "".strip(): 
             return probe_data
+        
+        logger.info(f'probe data for {prb_id} generated successfully')
+        if await enrollment(payload=probe_data) != 200:
+            return {"Error":"occurred during probe adoption"}, 400
         else:
-           if await enrollment(payload=probe_data) != 200:
-                return {"Error":"occurred during probe adoption"}, 400
-           else:
-                return probe_data
+            return 200
 
 @api.post("/api/dscv")
 async def dscv(tool_data: ToolCall):
