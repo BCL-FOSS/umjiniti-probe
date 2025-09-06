@@ -16,7 +16,7 @@ from pysnmp.carrier.asyncio.dgram import udp
 from pysnmp.entity.rfc3413 import ntfrcv
 
 class NetworkSNMP(Network):
-    def __init__(self, host, user, auth_key, priv_key,
+    def __init__(self, host: str='', user: str ='', auth_key: str='', priv_key: str='',
                  auth_protocol=None, priv_protocol=None, port=161):
         # SNMP community string and version
         self.SNMP_COMMUNITY = 'public'
