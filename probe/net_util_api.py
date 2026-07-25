@@ -32,6 +32,7 @@ class ExecuteCall(BaseModel):
     task_name: str = None
     schedule: dict = None
     user_id: str = None
+    prb_id: str = None
 
 class FlowCall(BaseModel):
     id: str
@@ -39,6 +40,7 @@ class FlowCall(BaseModel):
     flow: dict
     name: str
     user_id: str
+    type: str
     schedule: dict = None
 
 prb_id, hstnm, probe_data = init_probe()
@@ -186,6 +188,7 @@ async def tasks(command: str, tool_calls: ExecuteCall = None):
                     "output": output,
                     "error": error,
                     "parsed_result": parsed_result
+
                 }
             return Response(content=json.dumps(return_data), media_type="application/json", status_code=200 if code == 0 else 400)
         case 'init':      
