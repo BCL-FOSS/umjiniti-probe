@@ -21,3 +21,4 @@ httpx
 websocket-client
 python-crontab==3.3.0
 xmltodict==1.0.4
+bcrypt==5.0.0

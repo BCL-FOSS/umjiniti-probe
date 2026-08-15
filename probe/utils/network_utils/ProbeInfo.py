@@ -96,7 +96,7 @@ class ProbeInfo(Network):
                     f"Recv: {io.bytes_recv / 1024:.2f} KB"
                 )
 
-        return stat_data if stat_data else None
+        return stat_data
 
     def get_interface_subnet(swlf, interface: str):
         addrs = psutil.net_if_addrs().get(interface, [])

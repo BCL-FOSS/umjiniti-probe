@@ -1,108 +1,35 @@
 import datetime
 import ast
 from datetime import datetime, timezone
-from probe.init_app import action_map, log_alert, logger, prb_db
+from probe.init_app import log_alert, logger, get_probe_data, make_http_request, utility_scripts_path, net_base, core_url
+from probe.net_util_api import core_url
 from script_base.base import run_task
 import json
 import argparse
 import asyncio
+import os
 
 class FlowRunner:
     def __init__(self):
         self.logger = logger
-        self.prb_db = prb_db
-
-    async def get_probe_data(self):
-        await self.prb_db.connect_db()
-        probe_data = await self.prb_db.get_all_data(match='prb:*')
-        probe_data_dict = next(iter(probe_data.values()))
-        return probe_data_dict
 
     async def run(self, flow_str: str):
-        probe_data_dict = await self.get_probe_data()
+        probe_data_dict = await get_probe_data()
         self.logger.info(f"Probe Data From FlowRunner: {probe_data_dict}")
-
         flow_dict = ast.literal_eval(flow_str)
-
         # Parsed flow data
         workflow = flow_dict
         self.logger.info(workflow)
         workflow_data = workflow['drawflow']['Home']['data']
         self.logger.info(workflow_data)
 
-        node_output_mapping = {}
-        alerts = {}
-        agents = {}
-        remote_tools_to_execute = {}
+        alerts = []
+        agents = [{}]
         local_tools_to_execute = {}
-        remote_tool_params = {}
                 
         for node_id, node in workflow_data.items():
             node_data = node.get('data')
             match node_data['name']:
-                case str() as s if s.startswith('prb:'):
-                    if node_data['prb-trcrttype']:
-                        remote_tool_params['target'] = node_data['prb-trcrttarget']
-
-                        if node_data['prb-trcrtoptions']:
-                            remote_tool_params['tool_prms']['options'] = node_data['prb-trcrtoptions']
-                        if node_data['prb-trcrtpktlen']:
-                            remote_tool_params['tool_prms']['packetlen'] = node_data['prb-trcrtpktlen']
-                        if node_data['prb-trcrtdnsserver'] and node_data['prb-trcrttype'] == 'trcrt_dns':
-                            remote_tool_params['tool_prms']['server'] = node_data['prb-trcrtdnsserver']
-
-                        remote_tools_to_execute[node_id] = {'name': node_data['prb-trcrttype'], 'arguments': remote_tool_params, 'prb': node_data['name']}
-
-                    if node_data['prb-perftype']:
-                        if node_data['prb-perfoptions']:
-                            remote_tool_params['tool_prms']['options'] = node_data['prb-perfoptions']
-                        if node_data['prb-perfserver'] and node_data['prb-perftype'] == 'spdtst_clnt':
-                            remote_tool_params['tool_prms']['server'] = node_data['prb-perfserver']
-
-                        remote_tools_to_execute[node_id] = {'name': node_data['prb-perftype'], 'arguments': remote_tool_params, 'prb': node_data['name']}
-
-                    if node_data['prb-scanstype']:
-                        if node_data['prb-scantarget']:
-                            remote_tool_params['tool_prms']['target'] = node_data['prb-scantarget']
-
-                        if node_data['prb-scanstype'] == 'scan_snmp':
-                            if node_data['prb-snmpscanscripts']:
-                                remote_tool_params['tool_prms']['scripts'] = node_data['prb-snmpscanscripts']
-
-                            if node_data['prb-snmpcommunity']:
-                                remote_tool_params['community'] = node_data['prb-snmpcommunity']
-
-                        if node_data['prb-scanoptions']:
-                            remote_tool_params['tool_prms']['options'] = node_data['prb-scanoptions']
-
-                        if node_data['prb-scantgtifacedef'] == 'y' and node_data['scantgtiface']:
-                            remote_tool_params['interface'] = node_data['prb-scantgtiface']
-
-                        if node_data['prb-scanvulnscore'] and node_data['prb-scanstype'] == 'vuln_scan':
-                            remote_tool_params['tool_prms']['min_score'] = node_data['prb-scanvulnscore']
-
-                        if node_data['prb-scantype'] == 'scan-map':
-                            if node_data['prb-scantcpsyn']:
-                                remote_tool_params['tool_prms']['syn_ports'] = node_data['prb-scantcpsyn']
-                            if node_data['prb-scantcpack']:
-                                remote_tool_params['tool_prms']['ack_ports'] = node_data['prb-scantcpack']
-
-                        remote_tools_to_execute[node_id] = {'name': node_data['prb-scanstype'], 'arguments': remote_tool_params, 'prb': node_data['name']}
-
-                    if node_data['prb-pcapmode']:
-                        if node_data['prb-pcapmode'] != 'pcap_lcl' and node_data['prb-pcaptrmuser'] and node_data['prb-pcaptrmpass'] and node_data['prb-pcaptrmhost']:
-                            remote_tool_params['tool_prms']['usr'] = node_data['prb-pcaptrmuser']
-                            remote_tool_params['tool_prms']['pwd'] = node_data['prb-pcaptrmpass']
-                            remote_tool_params['tool_prms']['host'] = node_data['prb-pcaptrmhost']
-
-                        if node_data['prb-pcapmode'] == 'pcap_lcl' and node_data['prb-pcapcount']:
-                            remote_tool_params['tool_prms']['cap_count'] = node_data['prb-pcapcount']
-
-                        if node_data['prb-pcapduration'] and node_data['prb-pcapmode'] == 'pcap_win':
-                            remote_tool_params['tool_prms']['duration'] = node_data['prb-pcapduration']
-
-                        remote_tools_to_execute[node_id] = {'name': node_data['prb-pcapmode'], 'arguments': remote_tool_params, 'prb': node_data['name']}
-
                 case 'scans':
                     params = {}
                     if node_data['scan-type']:
@@ -205,57 +132,41 @@ class FlowRunner:
 
                     local_tools_to_execute[node_id] = {'tool': node_data['name'], 'prms': params}
 
-                case 'slack':
-                    alerts['tool'] = node_data['name']
-
-                case 'jira':
-                    alerts['tool'] = node_data['name']
-                 
-                case 'email':
-                    alerts['tool'] = node_data['name']
+                case 'slack' | 'jira' | 'email':
+                    alerts.append(node_data['name'])
 
                 case 'smartbot':
                     if node_data['bot-prompt']:
-                        agents['prompt'] = node_data['bot-prompt']
-                        agents['agent'] = node_data['name']
+                        agents[0]['prompt'] = node_data['bot-prompt']
+                        agents[0]['agent'] = node_data['name']
 
         if local_tools_to_execute != {}:
+            parser_script_path = os.path.join(utility_scripts_path, f'Parsers.py')
             for node_id, tool_info in local_tools_to_execute.items():
                 code, output, error, file_name = await run_task(action=tool_info['tool'], params=json.dumps(tool_info['prms']), snmp_community=tool_info['prms'].get('community') if 'community' in tool_info['prms'] else None)
 
-                node_output_mapping[node_id]['result'] = output
-                node_output_mapping[node_id]['tool'] = tool_info['tool']
-                node_output_mapping[node_id]['prb'] = probe_data_dict.get('name')
+                parser_command = f"python3 {parser_script_path} --action {tool_info['tool']} -o {output}"
 
-                timestamp = datetime.now(tz=timezone.utc).isoformat()
-                await log_alert.write_log(log_name=f"{tool_info['tool']}_result_{timestamp}", message=output)
+                if str(tool_info['tool']).startswith('scan'):
+                    parser_command+=f' --file {file_name}'
 
-        if remote_tools_to_execute != {}:
-            for node_id, tool_info in remote_tools_to_execute.items():
-                headers = {'content-type': 'application/json',
-                           'X-UMJ-WFLW-API-KEY': probe_data_dict.get('umj_api_key')}
-                
-                handler = action_map.get('bot')
+                if str(tool_info['tool']).startswith('trcrt'):
+                    parser_command+=f' -tar {tool_info["prms"]["tool_prms"]["target"]} -pid {probe_data_dict.get("prb_id")}'
 
-                bot_data = {'url': probe_data_dict.get('umj_url'), 
-                            'headers': headers,
-                            'usr': probe_data_dict.get('assigned_user'),
-                            'payload': {
-                                    'tool': tool_info['name'],
-                                    'tool_prms': tool_info['arguments'],
-                                    'prb_id': tool_info['prb'],
-                                }
-                            }
-                
-                mcp_run = await handler(**bot_data)
-                if mcp_run.status_code == 200:
-                    mcp_tool_data = mcp_run.json()
-                    if node_id in node_output_mapping and node_output_mapping[node_id]:
-                        node_output_mapping[node_id]['result'] = mcp_tool_data['output']
-                        node_output_mapping[node_id]['prb'] = remote_tools_to_execute[node_id]['prb']
-                        node_output_mapping[node_id]['tool'] = bot_data['payload']['tool']
+                if str(tool_info['tool']).startswith('pcap_'):
+                    parser_command+=f' -i {tool_info["prms"]["tool_prms"]["interface"]}'
 
-        return node_output_mapping, alerts, agents
+                parse_code, parse_output, parse_error = await net_base.run_shell_cmd(parser_command)
+
+            headers = {"X-UMJ-WFLW-API-KEY": os.getenv('UMJ_WFLW_API_KEY')}
+            resp_data = await make_http_request(cmd='g', url=f"{core_url}/init?usr={os.getenv('ASSIGNED_USER')}", headers=headers)
+
+            if resp_data.status_code == 200:
+                access_token = resp_data.cookies.get("access_token")
+                logger.info(access_token)
+
+            timestamp = datetime.now(tz=timezone.utc).isoformat()
+            await log_alert.write_log(log_name=f"{tool_info['tool']}_result_{timestamp}", message=output)
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run network automation workflows.")
@@ -264,19 +175,6 @@ if __name__ == "__main__":
         type=str, 
         help="Network flow to execute"
     )
-   
-    parser.add_argument(
-        '-w', '--ws_url', 
-        type=str, 
-        help="WebSocket URL for reporting results"
-    )
-    parser.add_argument(
-        '-pid', '--probe_id', 
-        type=str, 
-        help="Probe ID for reporting results"
-    )
     args = parser.parse_args()
-
     workflow_runner = FlowRunner()
-
-    asyncio.run(workflow_runner.run(flow_str=str(args.flow), ws_url=args.ws_url, probe_id=args.probe_id))
+    asyncio.run(workflow_runner.run(flow_str=str(args.flow)))

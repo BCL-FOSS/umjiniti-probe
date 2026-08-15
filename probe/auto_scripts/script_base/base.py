@@ -1,6 +1,6 @@
 from unittest import case
 
-from probe.init_app import action_map, parsers, probe_util, net_discovery, pcap, log_alert
+from probe.init_app import action_map, parsers, probe_util, net_discovery, pcap, log_alert, nmap_scans_path
 import os
 import json
 from datetime import datetime, timezone
@@ -18,14 +18,12 @@ async def run_task(action: str, params: str = None, snmp_community: str = None):
         pcap.set_credentials(user=params_dict['tool_prms']['usr'], password=params_dict['tool_prms']['pwd'])
 
     if action.startswith("scan_"):
-        cur_dir = os.getcwd()
-        scan_dir = os.path.join(cur_dir, "nmap_scans")
-        if not os.path.exists(scan_dir):
-            os.makedirs(scan_dir)
+        if not os.path.exists(nmap_scans_path):
+            os.makedirs(nmap_scans_path)
 
         timestamp = datetime.now(tz=timezone.utc).isoformat()
         exec_name = f"{action}_result_{timestamp}"
-        file=os.path.join(scan_dir, exec_name)
+        file=os.path.join(nmap_scans_path, exec_name)
         file_name = f"{file}.xml"
         net_discovery.set_output_file(file_name)
 
@@ -53,49 +51,6 @@ async def run_task(action: str, params: str = None, snmp_community: str = None):
     else:
         return code, output, error
         
-async def parse_scan_results(action: str, file_name: str, probe_id: str, params_dict: dict, output: str):
-    match action:
-        case str() as s if s.startswith("scan_"):                   
-            with open(file=f"{file_name}") as xml_file:
-                nmap_dict = xmltodict.parse(xml_file.read())
-                result = parsers.parse_nmap_json(nmap_dict)
-
-        case str() as s if s.startswith("trcrt"):
-            hops = parsers.parse_traceroute_output(output, action)
-            result = {
-                        "source": probe_id,
-                        "destination": params_dict['tool_prms']['target'],
-                        "trace_type": action,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "hops": hops
-                    }
-
-        case str() as s if s.startswith("test_"):
-            if action == 'test_srvr':
-                result = {
-                            "mode": "server",
-                            "server_ip": "0.0.0.0",
-                            "server_port": "7969",
-                            "status": "listening",
-                            "timestamp": datetime.now(timezone.utc).isoformat()
-                        }
-
-            if action == 'test_clnt':
-                iperf_data = json.loads(output)
-                result = parsers.parse_iperf_output(iperf_data)
-
-        case str() as s if s.startswith("pcap_"):
-            packets = parsers.parse_pcap_summary(output)
-            result = {
-                        "capture_mode": action,
-                        "interface": params_dict['interface'],
-                        "packet_count": len(packets),
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "packets": packets
-                    }
-            
-    return result
-
 def schedule_cronjob(job1: CronTab, core_act_data: dict):
     if 'minutes' in core_act_data and core_act_data['minutes']:
         minutes_range = str(core_act_data['minutes']).split(",")

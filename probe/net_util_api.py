@@ -4,13 +4,13 @@ from fastapi_user_limiter.limiter import rate_limiter
 from pydantic import BaseModel
 from init_app import (
     validate_api_key,
-    init_probe, logger, prb_db, cron
+    init_probe, logger, prb_db, cron, check_for_utils,
+    make_http_request, core_url
 )
-import httpx
 from net_util_mcp import mcp
 from CoreClientv2 import CoreClient
 import asyncio
-from auto_scripts.script_base.base import run_task, parse_scan_results, schedule_cronjob
+from auto_scripts.script_base.base import run_task, schedule_cronjob
 import json
 import os
 from datetime import datetime, timezone
@@ -19,8 +19,6 @@ import websockets
 import uuid
 
 class InitCall(BaseModel):
-    umj_url: str 
-    umj_usr: str
     umj_site: str
     umj_api_key: str
     prb_url: str
@@ -43,11 +41,10 @@ class FlowCall(BaseModel):
     type: str
     schedule: dict = None
 
-prb_id, hstnm, probe_data = init_probe()
+prb_id = None
+hstnm = None
+probe_data = None
 websocket_url = None
-if probe_data.get('umj_url'):
-    websocket_url = f"wss://{probe_data.get('umj_url')}/v1/api/core/channels/probe/heartbeat/{probe_data.get('prb_id')}"
-logger.info(f"Probe initialized: hostname={hstnm}")
 mcp_app = mcp.http_app(path="/mcp")
 
 async def send_over_websocket(data):
@@ -67,20 +64,16 @@ async def send_over_websocket(data):
             logger.info("connect_with_backoff cancelled")
         except Exception as e:
             logger.exception(f"Unexpected error connecting websocket: {e}")
-
-async def _make_http_request(cmd: str, url: str, payload: dict = {}, headers: dict = {}, cookies: str = ''):
-    async with httpx.AsyncClient() as client:
-        if cmd == 'p':
-            client.cookies.set("access_token", value=cookies)
-            post_result = await client.post(url, json=payload, headers=headers)
-            return post_result
-        elif cmd == 'g':
-            get_result = await client.get(url, headers=headers)
-            return get_result
         
 @asynccontextmanager
 async def combined_lifespan(app:FastAPI):
     async with mcp_app.lifespan(app):
+        await prb_db.connect_db()
+        await check_for_utils()
+        global prb_id, hstnm, probe_data, websocket_url
+        prb_id, hstnm, probe_data = await init_probe()
+        websocket_url = f"wss://{os.getenv('CORE_URL')}/v1/api/core/channels/probe/heartbeat/{probe_data.get('prb_id')}"
+        logger.info(f"Probe initialized: hostname={hstnm}")
         # idempotent guard
         if getattr(app.state, "core_client_started", False) is False and probe_data.get("umj_url"):
             app.state.core_client_started = True
@@ -127,9 +120,9 @@ def status():
 
 @api.post("/v1/api/init", dependencies=[Depends(validate_api_key), Depends(rate_limiter(2, 5))])
 async def init(init_data: InitCall):
-    init_url = f"https://{init_data.umj_url}/init?usr={init_data.umj_usr}"
+    init_url = f"{core_url}/init?usr={os.getenv('ASSIGNED_USER')}"
     logger.info(init_url)
-    enroll_url = f"https://{init_data.umj_url}/enroll?usr={init_data.umj_usr}&site={init_data.umj_site}"
+    enroll_url = f"{core_url}/enroll?usr={os.getenv('ASSIGNED_USER')}&site={init_data.umj_site}"
     logger.info(enroll_url)
 
     async def enrollment(payload: dict = {}):
@@ -137,11 +130,11 @@ async def init(init_data: InitCall):
         post_headers = {"X-UMJ-WFLW-API-KEY": init_data.umj_api_key,
                         "Content-Type": "application/json"}
 
-        resp_data = await _make_http_request(cmd="g", url=init_url, headers=headers)
+        resp_data = await make_http_request(cmd="g", url=init_url, headers=headers)
         if resp_data.status_code == 200:
             access_token = resp_data.cookies.get("access_token")
             logger.info(access_token)
-            enroll_rqst = await _make_http_request(
+            enroll_rqst = await make_http_request(
                 cmd="p",
                 url=enroll_url,
                 headers=post_headers,
@@ -153,11 +146,12 @@ async def init(init_data: InitCall):
     
     await prb_db.connect_db()
 
-    probe_data['url'] = init_data.prb_url
+    probe_data['url'] = os.getenv('PROBE_URL')
+    probe_data['umj_url'] = os.getenv('CORE_URL')
     probe_data['prb_api_key'] = init_data.prb_api_key
     probe_data['site'] = init_data.umj_site
     probe_data['name'] = init_data.prb_name
-    probe_data['assigned_user'] = init_data.umj_usr
+    probe_data['assigned_user'] = os.getenv('ASSIGNED_USER')
     logger.info(probe_data)
 
     if await enrollment(payload=probe_data) != 200:
@@ -166,11 +160,13 @@ async def init(init_data: InitCall):
         probe_info = await prb_db.get_all_data(match=f"prb-*")
         probe_info_dict = next(iter(probe_info.values()))
         probe_id = probe_info_dict.get('prb_id')
-        probe_data['umj_url'] = init_data.umj_url
         probe_data['umj_api_key'] = init_data.umj_api_key
         probe_data.pop('prb_api_key')
-        return Response(content='{"status": "ok"}', media_type="application/json", status_code=200) if await prb_db.upload_db_data(id=probe_id, data=probe_data) > 0 else Response(content='{"Error": "occurred during probe adoption"}', media_type="application/json", status_code=400)
-        
+        if await prb_db.upload_db_data(id=probe_id, data=probe_data) > 0:
+            return Response(content='{"status": "ok"}', media_type="application/json", status_code=200)
+        else:
+            return Response(content='{"Error": "occurred during probe adoption"}', media_type="application/json", status_code=400)
+
 @api.post("/v1/api/tasks/{command}", dependencies=[Depends(validate_api_key), Depends(rate_limiter(4, 10))])
 async def tasks(command: str, tool_calls: ExecuteCall = None):
     match command:
@@ -285,6 +281,8 @@ async def tasks(command: str, tool_calls: ExecuteCall = None):
                     }
                     all_tasks.append(task_info)
             return Response(content=json.dumps(all_tasks), media_type="application/json", status_code=200) if all_tasks != [] else Response(content='{"status": "no tasks found"}', media_type="application/json", status_code=400)
+        case _:
+            pass
 
 @api.get("/v1/api/flows/{command}", dependencies=[Depends(validate_api_key), Depends(rate_limiter(4, 10))])
 async def flows(command: str, flow_data: FlowCall = None):
@@ -345,3 +343,5 @@ async def flows(command: str, flow_data: FlowCall = None):
         case 'edit':
             result = await prb_db.upload_db_data(id=flow_data.id, data={'flow': flow_data.flow})
             return Response(content='{"status": "flow edited"}', media_type="application/json", status_code=200) if result is not None else Response(content='{"status": "flow edit failed"}', media_type="application/json", status_code=400)
+        case _:
+            pass

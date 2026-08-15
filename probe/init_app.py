@@ -1,9 +1,8 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader
-import redis
 from utils.network_utils.ProbeInfo import ProbeInfo
 import logging
-from passlib.hash import bcrypt
+import bcrypt
 import os
 from typing import Callable
 from utils.network_utils.NetworkDiscovery import NetworkDiscovery
@@ -19,7 +18,8 @@ from crontab import CronTab
 from utils.alerts_utils.LogAlert import LogAlert
 from utils.Parsers import Parsers
 from utils.RedisDB import RedisDB
-import asyncio
+from utils.network_utils.base.Network import Network
+import httpx
 
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger('passlib').setLevel(logging.ERROR)
@@ -28,6 +28,7 @@ logging.getLogger("docket.worker").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 net_discovery = NetworkDiscovery()
 net_test = NetworkTest()
+net_base = Network()
 pcap = PacketCapture()
 probe_util = ProbeInfo()
 log_alert = LogAlert()
@@ -59,12 +60,26 @@ action_map: dict[str, Callable[[dict], object]] = {
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=True)
 prb_db = RedisDB(hostname=os.environ.get('PROBE_DB'), port=os.environ.get('PROBE_DB_PORT'))
 error_response = 'missing required data'
+cwd = os.getcwd()
+utility_scripts_path = os.path.join(cwd, 'utils', 'jini-utils')
+nmap_scans_path = os.path.join(cwd, 'nmap_scans')
+core_url = f"https://{os.getenv('CORE_URL')}/v1/api/core/probe"
 
-def init_probe():
-    db_init = asyncio.run(prb_db.connect_db())
-    if db_init is None:
-        exit(1)
+async def get_probe_data():
+    await prb_db.connect_db()
+    probe_data = await prb_db.get_all_data(match='prb:*')
+    probe_data_dict = next(iter(probe_data.values()))
+    return probe_data_dict
 
+async def check_for_utils():
+    # Check if jini utility scripts have been downloaded. If not, clones from github.
+    if os.path.exists(utility_scripts_path) is False:
+        code, output, error = await Network.run_shell_cmd(cmd=f'cd {os.path.join(cwd, "utils")} && git clone https://github.com/BCL-FOSS/jini-utils.git')
+        logger.info(f'code: {code}\noutput: {output}\nerror: {error}')
+    else:
+        pass
+
+async def init_probe():
     prb_id, hstnm = probe_util.gen_probe_register_data()
     
     if os.environ.get('DEFAULT_INTERFACE') is None:
@@ -72,7 +87,7 @@ def init_probe():
     else:
         net_discovery.set_interface(os.environ.get('DEFAULT_INTERFACE'))
 
-    probe_data_check = asyncio.run(prb_db.get_all_data(match='*prb:*', cnfrm=True))
+    probe_data_check = await prb_db.get_all_data(match='*prb:*', cnfrm=True)
 
     if probe_data_check is False:
         probe_data=probe_util.collect_local_stats(id=f"{prb_id}", hostname=hstnm)
@@ -80,27 +95,26 @@ def init_probe():
         probe_data['iface_list'] = host_interfaces
         logger.info(host_interfaces)
 
-        data_uploaded = asyncio.run(prb_db.upload_db_data(id=f"{prb_id}", data=probe_data))
-        if data_uploaded is None:
-            logger.error(f"Failed to upload probe data to Redis for probe ID: {prb_id}")
+        if await prb_db.upload_db_data(id=f"{prb_id}", data=probe_data) > 0:
+            logger.info(f"Successfully uploaded probe data to Redis for probe ID: {prb_id}")
+            return prb_id, hstnm, probe_data
+        else:
             exit(1)
 
-        if data_uploaded > 0:
-            return prb_id, hstnm, probe_data
-
     elif probe_data_check is True:
-        probe_data = asyncio.run(prb_db.get_all_data(match='*prb:*'))
+        probe_data = await prb_db.get_all_data(match='*prb:*')
         probe_data_dict = next(iter(probe_data.values()))
         prb_id = probe_data_dict.get('prb_id')
         hstnm = probe_data_dict.get('hstnm')
-        return prb_id, hstnm, probe_data
+        return prb_id, hstnm, probe_data_dict
     
 async def check_api_key(key: str):
     probe_data = await prb_db.get_all_data(match='*prb:*')
     probe_data_dict = next(iter(probe_data.values()))
     stored_api_key = probe_data_dict.get("api_key")
     
-    if not stored_api_key or not bcrypt.verify(key, stored_api_key):
+    if not stored_api_key or bcrypt.checkpw(key, stored_api_key) is False:
+        
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid"
@@ -135,4 +149,12 @@ async def validate_mcp_api_key(headers: dict[str, str]) -> None:
         )
     await check_api_key(key)
     
-
+async def make_http_request(cmd: str, url: str, payload: dict = {}, headers: dict = {}, cookies: str = ''):
+    async with httpx.AsyncClient() as client:
+        if cmd == 'p':
+            client.cookies.set("access_token", value=cookies)
+            post_result = await client.post(url, json=payload, headers=headers)
+            return post_result
+        elif cmd == 'g':
+            get_result = await client.get(url, headers=headers)
+            return get_result
