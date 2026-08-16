@@ -63,7 +63,7 @@ error_response = 'missing required data'
 cwd = os.getcwd()
 utility_scripts_path = os.path.join(cwd, 'utils', 'jini-utils')
 nmap_scans_path = os.path.join(cwd, 'nmap_scans')
-core_url = f"https://{os.getenv('CORE_URL')}/v1/api/core/probe"
+core_url = f"https://{os.getenv('CORE_URL')}/v1/api/core/probes"
 
 async def get_probe_data():
     await prb_db.connect_db()

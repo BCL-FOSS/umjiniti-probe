@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from init_app import (
     validate_api_key,
     init_probe, logger, prb_db, cron, check_for_utils,
-    make_http_request, core_url
+    make_http_request, core_url, utility_scripts_path, get_probe_data, net_base
 )
 from net_util_mcp import mcp
 from CoreClientv2 import CoreClient
@@ -171,11 +171,24 @@ async def init(init_data: InitCall):
 async def tasks(command: str, tool_calls: ExecuteCall = None):
     match command:
         case 'exec':
+            probe_info = await get_probe_data()
+            parser_script_path = os.path.join(utility_scripts_path, f'Parsers.py')
             for tool in tool_calls.tools_to_execute:
                 code, output, error, file_name = await run_task(action=tool.get('action'), params=json.dumps(tool.get('params')), snmp_community=tool.get('params').get('community') if 'community' in tool.get('params') else None)
 
                 if code == 0:
-                    parsed_result = await parse_scan_results(action=tool.get('action'), file_name=file_name, probe_data_dict=probe_data, params_dict=tool.get('params'), output=output)
+                    parser_command = f"python3 {parser_script_path} --action {tool.get('action')} -o {output}"
+                    
+                    if str(tool.get('action')).startswith('scan'):
+                        parser_command+=f' --file {file_name}'
+                    
+                    if str(tool.get('action')).startswith('trcrt'):
+                        parser_command+=f' -tar {tool.get('params')["tool_prms"]["target"]} -pid {probe_info.get("prb_id")}'
+                    
+                    if str(tool.get('action')).startswith('pcap_'):
+                        parser_command+=f' -i {tool.get('params')["tool_prms"]["interface"]}'
+                    
+                    parse_code, parse_output, parse_error = await net_base.run_shell_cmd(parser_command)
                 else:
                     parsed_result = None
 
