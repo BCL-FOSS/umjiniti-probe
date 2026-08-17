@@ -175,7 +175,7 @@ class FlowRunner:
                     + f"{agents[0]['prompt']}"
                 )
                 notif_list = ','.join(alerts)
-                resp_analysis = await make_http_request(cmd='p', url=f"{core_url}/analysis", headers=post_headers, payload=json.dumps({"prompt": analysis_prompt, "name": agents[0]['agent'], "notif_list": notif_list}), cookies=access_token)
+                resp_analysis = await make_http_request(cmd='p', url=f"{core_url}/analysis", headers=post_headers, payload=json.dumps({"prompt": analysis_prompt, "name": agents[0]['agent'], "notif_list": notif_list, "prb_id": probe_data_dict.get('prb_id')}), cookies=access_token)
 
                 if resp_analysis.status_code == 200:
                     timestamp = datetime.now(tz=timezone.utc).isoformat()

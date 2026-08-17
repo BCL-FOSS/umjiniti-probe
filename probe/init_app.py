@@ -62,6 +62,7 @@ prb_db = RedisDB(hostname=os.environ.get('PROBE_DB'), port=os.environ.get('PROBE
 error_response = 'missing required data'
 cwd = os.getcwd()
 utility_scripts_path = os.path.join(cwd, 'utils', 'jini-utils')
+automation_scripts_path = os.path.join(cwd, 'auto_scripts')
 nmap_scans_path = os.path.join(cwd, 'nmap_scans')
 core_url = f"https://{os.getenv('CORE_URL')}/v1/api/core/probes"
 
@@ -72,7 +73,6 @@ async def get_probe_data():
     return probe_data_dict
 
 async def check_for_utils():
-    # Check if jini utility scripts have been downloaded. If not, clones from github.
     if os.path.exists(utility_scripts_path) is False:
         code, output, error = await Network.run_shell_cmd(cmd=f'cd {os.path.join(cwd, "utils")} && git clone https://github.com/BCL-FOSS/jini-utils.git')
         logger.info(f'code: {code}\noutput: {output}\nerror: {error}')
@@ -80,33 +80,32 @@ async def check_for_utils():
         pass
 
 async def init_probe():
-    prb_id, hstnm = probe_util.gen_probe_register_data()
-    
     if os.environ.get('DEFAULT_INTERFACE') is None:
         net_discovery.set_interface(probe_util.get_ifaces()[0])
     else:
         net_discovery.set_interface(os.environ.get('DEFAULT_INTERFACE'))
-
     probe_data_check = await prb_db.get_all_data(match='*prb:*', cnfrm=True)
-
     if probe_data_check is False:
-        probe_data=probe_util.collect_local_stats(id=f"{prb_id}", hostname=hstnm)
+        prb_id, hstnm = probe_util.gen_probe_register_data()
+        probe_data=probe_util.collect_local_stats()
+        probe_data['prb_id'] = prb_id
+        probe_data['hstnm'] = hstnm
         host_interfaces = probe_util.get_ifaces()
         probe_data['iface_list'] = host_interfaces
         logger.info(host_interfaces)
-
         if await prb_db.upload_db_data(id=f"{prb_id}", data=probe_data) > 0:
             logger.info(f"Successfully uploaded probe data to Redis for probe ID: {prb_id}")
             return prb_id, hstnm, probe_data
-        else:
-            exit(1)
-
     elif probe_data_check is True:
+        probe_stats = probe_util.collect_local_stats()
         probe_data = await prb_db.get_all_data(match='*prb:*')
         probe_data_dict = next(iter(probe_data.values()))
         prb_id = probe_data_dict.get('prb_id')
         hstnm = probe_data_dict.get('hstnm')
-        return prb_id, hstnm, probe_data_dict
+        if await prb_db.upload_db_data(id=prb_id, data=probe_stats) > 0:
+            updated_probe_data = await prb_db.get_all_data(match='*prb:*')
+            parsed_updated_probe_data = next(iter(updated_probe_data.values()))
+            return prb_id, hstnm, parsed_updated_probe_data
     
 async def check_api_key(key: str):
     probe_data = await prb_db.get_all_data(match='*prb:*')

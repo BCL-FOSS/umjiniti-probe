@@ -42,11 +42,8 @@ class ProbeInfo(Network):
         else:
             return self.logger.info("Probe ID Gen Failed")  
     
-    def collect_local_stats(self, id: str, hostname: str):
+    def collect_local_stats(self):
         stat_data = {}
-        stat_data["prb_id"] = id
-        stat_data["hstnm"] = hostname
-
         self.logger.info("\n📍 Local System Stats")
         stat_data["sys"] = f"{platform.system()} {platform.release()}"
         stat_data["cpu"] = f"{psutil.cpu_percent()}%"
