@@ -1,12 +1,9 @@
-from unittest import case
 
-from probe.init_app import action_map, parsers, probe_util, net_discovery, pcap, log_alert, nmap_scans_path
+from probe.init_app import action_map, probe_util, net_discovery, pcap, nmap_scans_path
 import os
 import json
 from datetime import datetime, timezone
-import xmltodict
 from crontab import CronTab
-from websockets.sync.client import ClientConnection
 
 async def run_task(action: str, params: str = None, snmp_community: str = None):
 
@@ -51,9 +48,9 @@ async def run_task(action: str, params: str = None, snmp_community: str = None):
     else:
         return code, output, error
         
-def schedule_cronjob(job1: CronTab, core_act_data: dict):
-    if 'minutes' in core_act_data and core_act_data['minutes']:
-        minutes_range = str(core_act_data['minutes']).split(",")
+def schedule_cronjob(job1: CronTab, job_schedule: dict):
+    if 'minutes' in job_schedule and job_schedule['minutes']:
+        minutes_range = str(job_schedule['minutes']).split(",")
         if isinstance(minutes_range, list):
             match len(minutes_range):
                 case 3:
@@ -63,8 +60,8 @@ def schedule_cronjob(job1: CronTab, core_act_data: dict):
                 case 1:
                     job1.minute.every(minutes_range[0])
 
-    if 'hours' in core_act_data and core_act_data['hours']:
-        hours_range = str(core_act_data['hours']).split(",")
+    if 'hours' in job_schedule and job_schedule['hours']:
+        hours_range = str(job_schedule['hours']).split(",")
         if isinstance(hours_range, list):
             match len(hours_range):
                 case 3:
@@ -74,8 +71,8 @@ def schedule_cronjob(job1: CronTab, core_act_data: dict):
                 case 1:
                     job1.hour.every(hours_range[0])
 
-    if 'dom' in core_act_data and core_act_data['dom']:
-        dom_range = str(core_act_data['dom']).split(",")
+    if 'dom' in job_schedule and job_schedule['dom']:
+        dom_range = str(job_schedule['dom']).split(",")
         if isinstance(dom_range, list):
             match len(dom_range):
                 case 3:
@@ -85,13 +82,13 @@ def schedule_cronjob(job1: CronTab, core_act_data: dict):
                 case 1:
                     job1.dom.every(dom_range[0])
 
-    if 'days' in core_act_data and core_act_data['days']:
-        days_range = str(core_act_data['days']).split(",")
+    if 'days' in job_schedule and job_schedule['days']:
+        days_range = str(job_schedule['days']).split(",")
         if isinstance(days_range, list):
             job1.dow.on(days_range)
 
-    if 'months' in core_act_data and core_act_data['months']:
-        months_range = str(core_act_data['months']).split(",")
+    if 'months' in job_schedule and job_schedule['months']:
+        months_range = str(job_schedule['months']).split(",")
         if isinstance(months_range, list):
             match len(months_range):
                 case 3:

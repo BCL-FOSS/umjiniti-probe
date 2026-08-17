@@ -27,14 +27,11 @@ class ExecuteCall(BaseModel):
     tools_to_execute: list[dict] = None
 
 class FlowCall(BaseModel):
-    id: str
-    probe: str
-    flow: dict
-    name: str
-    user_id: str
-    type: str
+    comment: str = None
+    flow: str = None
+    name: str = None
+    user_id: str = None
     schedule: dict = None
-    tools_to_execute: list[dict] = None
 
 websocket_url = None
 mcp_app = mcp.http_app(path="/mcp")
@@ -176,86 +173,54 @@ async def flows(command: str, flow_calls: FlowCall = None):
     probe_data = await get_probe_data()
     match command:
         case 'list':
-            all_flows = await prb_db.get_all_data(match=f"flow:*")
+            all_flows = await prb_db.get_all_data(match=f"auto_job:*")
             all_flows_dict = next(iter(all_flows.values())) if all_flows is not None else None
-            return Response(content=json.dumps(all_flows_dict), media_type="application/json", status_code=200) if all_flows_dict is not None else Response(content='{"status": "no flows found"}', media_type="application/json", status_code=400)     
-        case 'delete':
-            result = await prb_db.del_obj(key=flow_calls.id)
-            return Response(content='{"status": "flow deleted"}', media_type="application/json", status_code=200) if result is not None else Response(content='{"status": "flow deletion failed"}', media_type="application/json", status_code=400)
+            return Response(content=json.dumps(all_flows_dict), media_type="application/json", status_code=200) if all_flows_dict is not None else Response(status_code=400)     
         case 'new':
             flow_payload = {
-                'id': flow_calls.id,
-                'prb_id': flow_calls.probe,
+                'prb_id': probe_data.get('prb_id'),
                 'flow': flow_calls.flow,
-                'name': flow_calls.name,
                 'user_id': flow_calls.user_id
             }
-            if flow_calls.id == "default":
-                flow_calls.id = f"flow:{flow_calls.name}:{str(uuid.uuid4())}"
             job1 = None 
             now = datetime.now(tz=timezone.utc).isoformat()
-            job_comment=f"auto_job_{probe_data.get('prb_id')}"
+            job_comment=f"auto_job:{probe_data.get('prb_id')}:{flow_calls.name}:{now}"
             task_command = ""
             script_path = os.path.join(automation_scripts_path, f'FlowRunner.py')
-            task_command = f"python3 {script_path} -f '{json.dumps(flow_calls.flow)}' -n '{flow_calls.name}'"
-            job_comment+=f"_{flow_calls.name}_{now}"
+            task_command = f"python3 {script_path} -f '{flow_calls.flow}' -n '{job_comment}'"
             job1 = await asyncio.to_thread(cron.new, command=task_command, comment=job_comment)
-            scheduled_job = await asyncio.to_thread(schedule_cronjob, job1, )
-
+            scheduled_job = await asyncio.to_thread(schedule_cronjob, job1, flow_calls.schedule)
             if await asyncio.to_thread(scheduled_job.is_valid):
                 await asyncio.to_thread(cron.write)
-                await asyncio.sleep(1)
-                logger.info(f"Cron job added: {scheduled_job}")
-                result = await prb_db.upload_db_data(id=flow_calls.id, data=flow_calls)
-                return Response(content=json.dumps({
-                        'site': probe_data.get('site'),
-                        'prb_id': probe_data.get('prb_id'),
-                        'prb_name': probe_data.get('name'),
-                        'act': "task_cnfrm",
-                        'comment': job_comment,
-                        'enabled': 'enabled',
-                        'storage_opt': 'new',   
-                        'user_id': flow_calls.user_id
-                    }), media_type="application/json", status_code=200)
+                flow_payload['comment'] = job_comment
+                if await prb_db.upload_db_data(id=flow_payload['comment'], data=flow_payload) > 0:
+                    return Response(content=json.dumps({'comment': flow_payload['comment']}), media_type="application/json", status_code=200)
             else:
-                logger.error("Invalid cron job, not writing to crontab.")
-                return Response(content='invalid cron job', media_type="application/json", status_code=400)
+                return Response(status_code=400)
         case 'disable':
-            job = await asyncio.to_thread(cron.find_comment, comment=flow_calls.tools_to_execute[0]['comment'])
+            job = await asyncio.to_thread(cron.find_comment, comment=flow_calls.comment)
             await asyncio.to_thread(job.enable, False)
             await asyncio.to_thread(cron.write)
-            await asyncio.sleep(1)
-            flow_calls.tools_to_execute[0]['storage_opt'] = 'updt'
-            flow_calls.tools_to_execute[0]['act'] = 'task_cnfrm'
-            flow_calls.tools_to_execute[0]['task_output'] = f"Cron job '{flow_calls.tools_to_execute[0]['comment']}' disabled."
-            return Response(content=json.dumps(flow_calls.tools_to_execute[0]), media_type="application/json", status_code=200)
+            if await prb_db.upload_db_data(id=flow_calls.comment, data={'enabled': 'disabled'}) > 0:
+                return Response(status_code=200)
         case 'enable':
-            job = await asyncio.to_thread(cron.find_comment, comment=flow_calls.tools_to_execute[0]['comment'])
+            job = await asyncio.to_thread(cron.find_comment, comment=flow_calls.comment)
             await asyncio.to_thread(job.enable, True)
             await asyncio.to_thread(cron.write)
-            await asyncio.sleep(1)
-            flow_calls.tools_to_execute[0]['storage_opt'] = 'updt'
-            flow_calls.tools_to_execute[0]['act'] = 'task_cnfrm'
-            flow_calls.tools_to_execute[0]['task_output'] = f"Cron job '{flow_calls.tools_to_execute[0]['comment']}' enabled."
-            return Response(content=json.dumps(flow_calls.tools_to_execute[0]), media_type="application/json", status_code=200)
+            if await prb_db.upload_db_data(id=flow_calls.comment, data={'enabled': 'enabled'}) > 0:
+                return Response(status_code=200)
         case 'remove':
-            job = await asyncio.to_thread(cron.find_comment, comment=flow_calls.tools_to_execute[0]['comment'])
+            job = await asyncio.to_thread(cron.find_comment, comment=flow_calls.comment)
             await asyncio.to_thread(cron.remove, job)
-            await asyncio.to_thread(cron.write)
-            await asyncio.sleep(1)
-            flow_calls.tools_to_execute[0]['act'] = 'task_cnfrm'
-            flow_calls.tools_to_execute[0]['task_output'] = f"Cron job '{flow_calls.tools_to_execute[0]['comment']}' deleted."
-            flow_calls.tools_to_execute[0]['storage_opt'] = 'del'
-            return Response(content=json.dumps(flow_calls.tools_to_execute[0]), media_type="application/json", status_code=200)
+            await asyncio.to_thread(cron.write)   
+            if await prb_db.del_obj(key=flow_calls.comment) is not None:        
+                return Response(status_code=200)
         case 'remove_all':
             await asyncio.to_thread(cron.remove_all)
             await asyncio.to_thread(cron.write)
-            await asyncio.sleep(1)
-            flow_calls.tools_to_execute[0]['act'] = 'task_cnfrm'
-            flow_calls.tools_to_execute[0]['task_output'] = f"All cron jobs deleted."
-            return Response(content=json.dumps(flow_calls.tools_to_execute[0]), media_type="application/json", status_code=200)
+            return Response(status_code=200)
         case 'reschedule':
-            job = await asyncio.to_thread(cron.find_comment, comment=flow_calls.tools_to_execute[0]['comment'])
+            job = await asyncio.to_thread(cron.find_comment, comment=flow_calls.comment)
             if job:
                 job = await asyncio.to_thread(schedule_cronjob, job, flow_calls.schedule)                      
             if await asyncio.to_thread(job.is_valid):
@@ -263,12 +228,12 @@ async def flows(command: str, flow_calls: FlowCall = None):
                 await asyncio.sleep(1)
                 logger.info(f"Cron job rescheduled: {job}")
                 flow_calls.tools_to_execute[0]['enabled'] = 'enabled' if job.is_enabled() else 'disabled'
-                flow_calls.tools_to_execute[0]['storage_opt'] = 'updt'
+                flow_calls.tools_to_execute[0]['storage_opt'] = 'rescheduled'
                 flow_calls.tools_to_execute[0]['act'] = 'task_cnfrm'
                 flow_calls.tools_to_execute[0]['task_output'] = f"Cron job '{flow_calls.tools_to_execute[0]['comment']}' rescheduled."
                 return Response(content=json.dumps(flow_calls.tools_to_execute[0]), media_type="application/json", status_code=200)
         case 'load':
-            flow = await prb_db.get_all_data(match=f"*{flow_calls.id}*")
+            flow = await prb_db.get_all_data(match=f"*{flow_calls.tools_to_execute[0]['comment']}*")
             flow_calls = next(iter(flow.values())) if flow is not None else None
             return Response(content=json.dumps(flow_calls), media_type="application/json", status_code=200) if flow_calls is not None else Response(content='{"status": "flow load failed"}', media_type="application/json", status_code=400)
         case 'edit':

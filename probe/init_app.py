@@ -9,14 +9,8 @@ from utils.network_utils.NetworkDiscovery import NetworkDiscovery
 from utils.network_utils.NetworkTest import NetworkTest
 from utils.network_utils.ProbeInfo import ProbeInfo
 from utils.network_utils.PacketCapture import PacketCapture
-from utils.alerts_utils.SlackAlert import SlackAlert
-from utils.alerts_utils.JiraSM import JiraSM
-from utils.alerts_utils.EmailSenderHandler import EmailSenderHandler
-from utils.alerts_utils.BotConnection import BotConnection
 import logging
 from crontab import CronTab
-from utils.alerts_utils.LogAlert import LogAlert
-from utils.Parsers import Parsers
 from utils.RedisDB import RedisDB
 from utils.network_utils.base.Network import Network
 import httpx
@@ -31,12 +25,6 @@ net_test = NetworkTest()
 net_base = Network()
 pcap = PacketCapture()
 probe_util = ProbeInfo()
-log_alert = LogAlert()
-slack_alert = SlackAlert()
-jira_alert = JiraSM()
-email_alert = EmailSenderHandler()
-bot_connection = BotConnection()
-parsers = Parsers()
 cron=CronTab(user='root')  
 action_map: dict[str, Callable[[dict], object]] = {
     "trcrt_dns": net_test.dnstraceroute,
@@ -51,11 +39,7 @@ action_map: dict[str, Callable[[dict], object]] = {
     "scan_map": net_discovery.mapper,
     "pcap_lcl": pcap.pcap_local,
     "pcap_tux": pcap.pcap_remote_linux,
-    "pcap_win": pcap.pcap_remote_windows,
-    "slack": slack_alert.send_alert_message,
-    "jira": jira_alert.send_alert,
-    "bot": bot_connection.mcp_exec,
-    "email": email_alert.send_transactional_email,
+    "pcap_win": pcap.pcap_remote_windows
 }
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=True)
 prb_db = RedisDB(hostname=os.environ.get('PROBE_DB'), port=os.environ.get('PROBE_DB_PORT'))
