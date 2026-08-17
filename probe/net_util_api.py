@@ -31,9 +31,8 @@ class FlowCall(BaseModel):
     flow: str = None
     name: str = None
     user_id: str = None
-    schedule: dict = None
+    schedule: str = None
 
-websocket_url = None
 mcp_app = mcp.http_app(path="/mcp")
         
 @asynccontextmanager
@@ -41,12 +40,12 @@ async def combined_lifespan(app:FastAPI):
     async with mcp_app.lifespan(app):
         await prb_db.connect_db()
         await check_for_utils()
-        global websocket_url
+        websocket_url = None
         prb_id, hstnm, probe_data = await init_probe()
-        websocket_url = f"wss://{os.getenv('CORE_URL')}/v1/api/core/channels/probe/heartbeat/{probe_data.get('prb_id')}"
+        websocket_url = f"wss://{os.getenv('CORE_URL')}/v1/api/core/channels/probe/heartbeat/{prb_id}"
         logger.info(f"Probe initialized: hostname={hstnm}")
         # idempotent guard
-        if getattr(app.state, "core_client_started", False) is False and probe_data.get("umj_url"):
+        if getattr(app.state, "core_client_started", False) is False:
             app.state.core_client_started = True
             app.state.core_client = None
             app.state.core_client_task = None
@@ -180,16 +179,17 @@ async def flows(command: str, flow_calls: FlowCall = None):
             flow_payload = {
                 'prb_id': probe_data.get('prb_id'),
                 'flow': flow_calls.flow,
-                'user_id': flow_calls.user_id
+                'user_id': flow_calls.user_id,
+                'schedule': flow_calls.schedule
             }
             job1 = None 
             now = datetime.now(tz=timezone.utc).isoformat()
-            job_comment=f"auto_job:{probe_data.get('prb_id')}:{flow_calls.name}:{now}"
+            job_comment=f"auto_job:{probe_data.get('prb_id')}:{flow_calls.name}:{now}:{str(uuid.uuid4())}"
             task_command = ""
             script_path = os.path.join(automation_scripts_path, f'FlowRunner.py')
             task_command = f"python3 {script_path} -f '{flow_calls.flow}' -n '{job_comment}'"
             job1 = await asyncio.to_thread(cron.new, command=task_command, comment=job_comment)
-            scheduled_job = await asyncio.to_thread(schedule_cronjob, job1, flow_calls.schedule)
+            scheduled_job = await asyncio.to_thread(schedule_cronjob, job1, json.loads(flow_calls.schedule))
             if await asyncio.to_thread(scheduled_job.is_valid):
                 await asyncio.to_thread(cron.write)
                 flow_payload['comment'] = job_comment
@@ -224,20 +224,14 @@ async def flows(command: str, flow_calls: FlowCall = None):
             if job:
                 job = await asyncio.to_thread(schedule_cronjob, job, flow_calls.schedule)                      
             if await asyncio.to_thread(job.is_valid):
-                await asyncio.to_thread(cron.write)
-                await asyncio.sleep(1)
-                logger.info(f"Cron job rescheduled: {job}")
-                flow_calls.tools_to_execute[0]['enabled'] = 'enabled' if job.is_enabled() else 'disabled'
-                flow_calls.tools_to_execute[0]['storage_opt'] = 'rescheduled'
-                flow_calls.tools_to_execute[0]['act'] = 'task_cnfrm'
-                flow_calls.tools_to_execute[0]['task_output'] = f"Cron job '{flow_calls.tools_to_execute[0]['comment']}' rescheduled."
-                return Response(content=json.dumps(flow_calls.tools_to_execute[0]), media_type="application/json", status_code=200)
+                await asyncio.to_thread(cron.write)            
+                return Response(status_code=200)
         case 'load':
-            flow = await prb_db.get_all_data(match=f"*{flow_calls.tools_to_execute[0]['comment']}*")
-            flow_calls = next(iter(flow.values())) if flow is not None else None
-            return Response(content=json.dumps(flow_calls), media_type="application/json", status_code=200) if flow_calls is not None else Response(content='{"status": "flow load failed"}', media_type="application/json", status_code=400)
+            flow = await prb_db.get_all_data(match=f"{flow_calls.comment}")
+            selected_flow_data = next(iter(flow.values())) if flow is not None else None
+            return Response(content=json.dumps(selected_flow_data), media_type="application/json", status_code=200)
         case 'edit':
-            result = await prb_db.upload_db_data(id=flow_calls.id, data={'flow': flow_calls.flow})
-            return Response(content='{"status": "flow edited"}', media_type="application/json", status_code=200) if result is not None else Response(content='{"status": "flow edit failed"}', media_type="application/json", status_code=400)
+            result = await prb_db.upload_db_data(id=flow_calls.comment, data={'flow': flow_calls.flow})
+            return Response(status_code=200) if result is not None else Response(status_code=400)
         case _:
             pass
