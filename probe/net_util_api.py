@@ -24,7 +24,7 @@ class InitCall(BaseModel):
     prb_name: str
 
 class ExecuteCall(BaseModel):
-    tools_to_execute: list[dict] = None
+    tools_list: str
 
 class FlowCall(BaseModel):
     comment: str = None
@@ -84,10 +84,6 @@ async def combined_lifespan(app:FastAPI):
 
 api = FastAPI(title='Network Util API', lifespan=combined_lifespan)
 
-@api.get("/v1/api/status", dependencies=[Depends(rate_limiter(2, 5)), Depends(validate_api_key)])
-def status():
-    return Response(content='{"status": "ok"}', media_type="application/json", status_code=200)
-
 @api.post("/v1/api/init", dependencies=[Depends(validate_api_key), Depends(rate_limiter(2, 5))])
 async def init(init_data: InitCall):
     init_url = f"{core_url}/init?usr={os.getenv('ASSIGNED_USER')}"
@@ -124,57 +120,50 @@ async def init(init_data: InitCall):
     logger.info(probe_data)
 
     if await enrollment(payload=probe_data) != 200:
-        return Response(content='{"Error": "occurred during probe adoption"}', media_type="application/json", status_code=400)
+        return Response(status_code=400)
     else:
         await prb_db.connect_db()
         probe_data['umj_api_key'] = init_data.umj_api_key
         probe_data.pop('prb_api_key')
         if await prb_db.upload_db_data(id=probe_data.get('prb_id'), data=probe_data) > 0:
-            return Response(content='{"status": "ok"}', media_type="application/json", status_code=200)
+            return Response(status_code=200)
         else:
-            return Response(content='{"Error": "occurred during probe adoption"}', media_type="application/json", status_code=400)
+            return Response(status_code=400)
 
-@api.post("/v1/api/tasks/{command}", dependencies=[Depends(validate_api_key), Depends(rate_limiter(4, 10))])
-async def tasks(command: str, tool_calls: ExecuteCall = None):
+@api.post("/v1/api/tasks/exec", dependencies=[Depends(validate_api_key), Depends(rate_limiter(4, 10))])
+async def tasks(tool_calls: ExecuteCall = None):
     probe_info = await get_probe_data()
-    match command:
-        case 'exec':
-            parser_script_path = os.path.join(utility_scripts_path, f'Parsers.py')
-            for tool in tool_calls.tools_to_execute:
-                code, output, error, file_name = await run_task(action=tool.get('action'), params=json.dumps(tool.get('params')), snmp_community=tool.get('params').get('community') if 'community' in tool.get('params') else None)
+    parser_script_path = os.path.join(utility_scripts_path, f'Parsers.py')
+    task_output=f"Probe: {probe_info.get('prb_id')}\n"
+    selected_tools = json.loads(tool_calls.tools_list)
+    for tool in selected_tools:
+        code, output, error, file_name = await run_task(action=tool.get('action'), params=json.dumps(tool.get('params')), snmp_community=tool.get('params').get('community') if 'community' in tool.get('params') else None)
 
-                if code == 0:
-                    parser_command = f"python3 {parser_script_path} --action {tool.get('action')} -o {output}"
+        if code == 0:
+            parser_command = f"python3 {parser_script_path} --action {tool.get('action')} -o {output}"
                     
-                    if str(tool.get('action')).startswith('scan'):
-                        parser_command+=f' --file {file_name}'
+            if str(tool.get('action')).startswith('scan'):
+                parser_command+=f' --file {file_name}'
                     
-                    if str(tool.get('action')).startswith('trcrt'):
-                        parser_command+=f' -tar {tool.get('params')["tool_prms"]["target"]} -pid {probe_info.get("prb_id")}'
+            if str(tool.get('action')).startswith('trcrt'):
+                parser_command+=f' -tar {tool.get('params')["tool_prms"]["target"]} -pid {probe_info.get("prb_id")}'
                     
-                    if str(tool.get('action')).startswith('pcap_'):
-                        parser_command+=f' -i {tool.get('params')["tool_prms"]["interface"]}'
+            if str(tool.get('action')).startswith('pcap_'):
+                parser_command+=f' -i {tool.get('params')["tool_prms"]["interface"]}'
                     
-                    parse_code, parse_output, parse_error = await net_base.run_shell_cmd(parser_command)
+            parse_code, parse_output, parse_error = await net_base.run_shell_cmd(parser_command)
 
-                    if parse_code == 0:
-                        return_data = {
-                                        "parsed_result": parse_output
-                                        }
-                        return Response(content=json.dumps(return_data), media_type="application/json", status_code=200)
-                else:
-                    return Response(status_code=400)
-        case _:
-            pass
+            if parse_code == 0:
+                task_output+=f"Task: {tool.get('action')}\nOutput: {parse_output}\n\n"
+            else:
+                task_output+=f"Task: {tool.get('action')}\nStatus: {parse_error}\n\n"
+           
+    return Response(content={'output': task_output}, media_type="application/json", status_code=200)
 
 @api.get("/v1/api/flows/{command}", dependencies=[Depends(validate_api_key), Depends(rate_limiter(4, 10))])
 async def flows(command: str, flow_calls: FlowCall = None):
     probe_data = await get_probe_data()
     match command:
-        case 'list':
-            all_flows = await prb_db.get_all_data(match=f"auto_job:*")
-            all_flows_dict = next(iter(all_flows.values())) if all_flows is not None else None
-            return Response(content=json.dumps(all_flows_dict), media_type="application/json", status_code=200) if all_flows_dict is not None else Response(status_code=400)     
         case 'new':
             flow_payload = {
                 'prb_id': probe_data.get('prb_id'),
@@ -230,6 +219,10 @@ async def flows(command: str, flow_calls: FlowCall = None):
             flow = await prb_db.get_all_data(match=f"{flow_calls.comment}")
             selected_flow_data = next(iter(flow.values())) if flow is not None else None
             return Response(content=json.dumps(selected_flow_data), media_type="application/json", status_code=200)
+        case 'list':
+                    all_flows = await prb_db.get_all_data(match=f"auto_job:*")
+                    all_flows_dict = next(iter(all_flows.values())) if all_flows is not None else None
+                    return Response(content=json.dumps(all_flows_dict), media_type="application/json", status_code=200) if all_flows_dict is not None else Response(status_code=400)  
         case 'edit':
             result = await prb_db.upload_db_data(id=flow_calls.comment, data={'flow': flow_calls.flow})
             return Response(status_code=200) if result is not None else Response(status_code=400)
