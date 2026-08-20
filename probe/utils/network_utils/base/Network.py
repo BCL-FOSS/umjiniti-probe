@@ -23,7 +23,7 @@ class Network():
         
         self.logger.info(return_code)
 
-        return return_code, stdout.decode(), stderr.decode()
+        return return_code, stdout.decode().strip(), stderr.decode().strip()
     
     async def run_ssh_cmd(self, host: str, user: str, password: str, cmd: str):
         command = (
@@ -44,7 +44,7 @@ class Network():
         
         self.logger.info(return_code)
 
-        return return_code, stdout.decode(), stderr.decode()
+        return return_code, stdout.decode().strip(), stderr.decode().strip()
     
     async def ssh_connect(self, host: str, user: str, password: str):
         command = (

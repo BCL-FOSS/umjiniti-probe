@@ -85,7 +85,7 @@ class PacketCapture(Network):
 
             return_code = await proc.wait()
 
-        return return_code, stdout, stderr
+        return return_code, stdout.decode().strip(), stderr.decode().strip()
 
     async def pcap_local(self, interface: str, cap_count: int = 50):
         time_stamp = datetime.now(timezone.utc).isoformat()

@@ -132,11 +132,14 @@ async def init(init_data: InitCall):
 
 @api.post("/v1/api/tasks/exec", dependencies=[Depends(validate_api_key), Depends(rate_limiter(4, 10))])
 async def tasks(tool_calls: ExecuteCall = None):
-    probe_info = await get_probe_data()
-    parser_script_path = os.path.join(utility_scripts_path, f'Parsers.py')
-    task_output=f"Probe: {probe_info.get('prb_id')}\n"
+    probe_info=await get_probe_data()
+    parser_script_path=os.path.join(utility_scripts_path, f'Parsers.py')
     selected_tools = json.loads(tool_calls.tools_list)
+    documents=[]
+    now = datetime.now(tz=timezone.utc).isoformat()
+    main_content=f"network Tool(s) Output for Probe: {probe_info.get('prb_id')}\n\n"
     for tool in selected_tools:
+        
         code, output, error, file_name = await run_task(action=tool.get('action'), params=json.dumps(tool.get('params')), snmp_community=tool.get('params').get('community') if 'community' in tool.get('params') else None)
 
         if code == 0:
@@ -153,12 +156,28 @@ async def tasks(tool_calls: ExecuteCall = None):
                     
             parse_code, parse_output, parse_error = await net_base.run_shell_cmd(parser_command)
 
+            content = f"Tool: {tool.get('action')}\n"
+            content += f"Timestamp: {now}\n"
+            content += f"Raw Output:\n{output}\n"
+            content += f"Parsed Output:\n{parse_output}\n\n"
+
             if parse_code == 0:
-                task_output+=f"Task: {tool.get('action')}\nOutput: {parse_output}\n\n"
+                documents.append({
+                    "tool_type": f"{tool.get('action')}",
+                    "output": f"{output}",
+                    "content": content,
+                    "metadata": {"prb_id": f"{probe_info.get('prb_id')}",
+                                    "timestamp": f"{now}",
+                                    "tool_type": f"{tool.get('action')}"
+                                },
+                    "auto_execute": False,
+                    "id": f"{probe_info.get('prb_id')}"
+                })
+                main_content+=f"{content}\n"
             else:
-                task_output+=f"Task: {tool.get('action')}\nStatus: {parse_error}\n\n"
+                pass
            
-    return Response(content={'output': task_output}, media_type="application/json", status_code=200)
+    return Response(content={'output': json.dumps(documents), 'anlys_output': main_content}, media_type="application/json", status_code=200)
 
 @api.get("/v1/api/flows/{command}", dependencies=[Depends(validate_api_key), Depends(rate_limiter(4, 10))])
 async def flows(command: str, flow_calls: FlowCall = None):
