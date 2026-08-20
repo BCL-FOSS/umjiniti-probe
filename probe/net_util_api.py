@@ -25,6 +25,7 @@ class InitCall(BaseModel):
 
 class ExecuteCall(BaseModel):
     tools_list: str
+    flow_name: str
 
 class FlowCall(BaseModel):
     comment: str = None
@@ -136,10 +137,10 @@ async def tasks(tool_calls: ExecuteCall = None):
     parser_script_path=os.path.join(utility_scripts_path, f'Parsers.py')
     selected_tools = json.loads(tool_calls.tools_list)
     documents=[]
-    now = datetime.now(tz=timezone.utc).isoformat()
+    
     main_content=f"network Tool(s) Output for Probe: {probe_info.get('prb_id')}\n\n"
     for tool in selected_tools:
-        
+        now = datetime.now(tz=timezone.utc).isoformat()
         code, output, error, file_name = await run_task(action=tool.get('action'), params=json.dumps(tool.get('params')), snmp_community=tool.get('params').get('community') if 'community' in tool.get('params') else None)
 
         if code == 0:
@@ -160,18 +161,21 @@ async def tasks(tool_calls: ExecuteCall = None):
             content += f"Timestamp: {now}\n"
             content += f"Raw Output:\n{output}\n"
             content += f"Parsed Output:\n{parse_output}\n\n"
+            doc_id = f"{tool_calls.flow_name}_{now}_{probe_info.get('prb_id')}_{str(uuid.uuid4())}"
 
             if parse_code == 0:
                 documents.append({
                     "tool_type": f"{tool.get('action')}",
                     "output": f"{output}",
                     "content": content,
-                    "metadata": {"prb_id": f"{probe_info.get('prb_id')}",
-                                    "timestamp": f"{now}",
-                                    "tool_type": f"{tool.get('action')}"
+                    "metadata": {
+                        "prb_id": f"{probe_info.get('prb_id')}",
+                        "timestamp": f"{now}",
+                        "tool_type": f"{tool.get('action')}",
+                        "flow": tool_calls.flow_name
                                 },
                     "auto_execute": False,
-                    "id": f"{probe_info.get('prb_id')}"
+                    "id": doc_id
                 })
                 main_content+=f"{content}\n"
             else:
