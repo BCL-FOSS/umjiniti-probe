@@ -43,7 +43,7 @@ class NetworkDiscovery(Network):
         if min_score:
             cmd += f" --script-args vulners.mincvss={min_score}"
         code, output, error = await self.run_shell_cmd(cmd=cmd)
-        return code, output, error
+        return code, output, error, self.file_name
     
     async def snmp(self, target: str, scripts: str = 'snmp-info,snmp-sysdescr,snmp-interfaces,snmp-netstat'):
         if scripts == 'all':
@@ -54,24 +54,24 @@ class NetworkDiscovery(Network):
     
     async def operating_system(self, target: str):
         code, output, error = await self.run_shell_cmd(cmd=f"{self.command_map.get('os')} {target}")
-        return code, output, error
+        return code, output, error, self.file_name
     
     async def services(self, target: str):
      
         code, output, error = await self.run_shell_cmd(cmd=f"{self.command_map.get('services')} {target}")
 
-        return code, output, error
+        return code, output, error, self.file_name
     
     async def custom(self, target: str, options: str):
         
         code, output, error = await self.run_shell_cmd(cmd=f"nmap {options} {target}")
 
-        return code, output, error
+        return code, output, error, self.file_name
     
     async def mapper(self, target: str, syn_ports: str = '22,23,80,443,830,3389', ack_ports: str = '80,443'):
         code, output, error = await self.run_shell_cmd(cmd=f"{self.command_map.get('map')} -PS{syn_ports} -PA{ack_ports} -PU {target}")
 
-        return code, output, error
+        return code, output, error, self.file_name
 
     
     

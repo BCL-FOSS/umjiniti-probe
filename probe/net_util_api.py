@@ -118,6 +118,7 @@ async def init(init_data: InitCall):
     probe_data['site'] = init_data.umj_site
     probe_data['name'] = init_data.prb_name
     probe_data['assigned_user'] = os.getenv('ASSIGNED_USER')
+    probe_data['available_tools'] = json.dumps(mcp.get_tools())
     logger.info(probe_data)
 
     if await enrollment(payload=probe_data) != 200:

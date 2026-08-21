@@ -2,19 +2,11 @@ from fastmcp import FastMCP
 from typing import Annotated
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
-from init_app import log_alert, validate_mcp_api_key
+from init_app import validate_mcp_api_key
 from auto_scripts.script_base.base import run_task
 import json
 
 mcp = FastMCP(name="umjiniti-probe: network management utility")
-
-async def save_log_and_return(code: int, output: str, error: str, log_name: str) -> tuple[int, str, str]:
-    log_message=f""
-    log_message+=f"{code}\n\n"
-    log_message+=f"{output}\n\n"
-    log_message+=f"{error}"
-    await log_alert.write_log(log_name=log_name, message=log_message)
-    return code, output, error
 
 @mcp.tool
 async def test_srvr(options: Annotated[str, "Additional command line flags to add to the iperf3 command."] = None, host: Annotated[str, "The IP address of the incoming interface the iperf server binds to. Defaults to 0.0.0.0 to bind to all available interfaces. This should be set for multihomed umjiniti probes."] = None):
@@ -31,7 +23,7 @@ async def test_srvr(options: Annotated[str, "Additional command line flags to ad
         params['tool_prms']['host'] = host
     
     code, output, error, _ = await run_task(action="test_srvr", params=json.dumps(params))
-    return await save_log_and_return(code, output, error, log_name=f"speedtest_srvr_result")
+    return output
 
 @mcp.tool
 async def test_clnt(server: Annotated[str, "The speedtest server the client connects to."], options: Annotated[str, "Additional command line flags to add to the iperf3 command."] = None, host: Annotated[str, "The IP address of the incoming interface the iperf client binds to. Defaults to 0.0.0.0 to bind to all available interfaces. This should be set for multihomed umjiniti probes."] = None):
@@ -49,7 +41,7 @@ async def test_clnt(server: Annotated[str, "The speedtest server the client conn
     
     params['tool_prms']['server'] = server
     code, output, error, _ = await run_task(action="test_clnt", params=json.dumps(params))
-    return await save_log_and_return(code, output, error, log_name=f"speedtest_client_result")
+    return output
 
 @mcp.tool
 async def trcrt(target: Annotated[str, "The server or endpoint to trace."], options: Annotated[str, "Additional command line flags to add to the traceroute command"] = None, packetlength: Annotated[str, "Sets the total size of the probing packet"] = None):
@@ -70,7 +62,7 @@ async def trcrt(target: Annotated[str, "The server or endpoint to trace."], opti
     params['tool_prms']['target'] = target
     code, output, error, _ = await run_task(action="trcrt", params=json.dumps(params))
 
-    return await save_log_and_return(code, output, error, log_name=f"traceroute_result")
+    return output
 
 @mcp.tool
 async def trcrt_dns(target: Annotated[str, "The server or endpoint to trace."], options: Annotated[str, "Additional command line flags to add to the dnstraceroute command"] = None, server: Annotated[str, "The DNS server to use for the traceroute. Defaults to 8.8.8.8 (google DNS server)"] = None):
@@ -91,7 +83,7 @@ async def trcrt_dns(target: Annotated[str, "The server or endpoint to trace."], 
     params['tool_prms']['target'] = target
     code, output, error, _ = await run_task(action="trcrt_dns", params=json.dumps(params))
 
-    return await save_log_and_return(code, output, error, log_name=f"dns_traceroute_result")
+    return output
 
 @mcp.tool
 async def scan_vuln(target: Annotated[str, "The subnet, network device IP or hostname to run the scan on."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None, min_score: Annotated[int, "The minimum CVSS score to filter vulnerabilities. Defaults to 5."] = None):
@@ -109,7 +101,7 @@ async def scan_vuln(target: Annotated[str, "The subnet, network device IP or hos
 
     params['tool_prms']['target'] = target
     code, output, error, _ = await run_task(action="scan_vuln", params=json.dumps(params))
-    return await save_log_and_return(code, output, error, log_name=f"vulnerability_scan_result")
+    return output
 
 @mcp.tool
 async def scan_srvc(target: Annotated[str, "The subnet, network device IP or hostname to run the scan on."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None):
@@ -124,7 +116,7 @@ async def scan_srvc(target: Annotated[str, "The subnet, network device IP or hos
        
     params['tool_prms']['target'] = target
     code, output, error, _ = await run_task(action="scan_dev_id", params=json.dumps(params))
-    return await save_log_and_return(code, output, error, log_name=f"device_id_scan_result")
+    return output
 
 @mcp.tool
 async def scan_snmp(target: Annotated[str, "The subnet, network device IP or hostname to run the scan on."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None,  scripts: Annotated[str, "The nmap SNMP scan scripts to run. Defaults scripts retrieve system decriptions and system network interface data."] = None, community: Annotated[str, "The SNMP community string to use for the scan."] = None):
@@ -143,11 +135,11 @@ async def scan_snmp(target: Annotated[str, "The subnet, network device IP or hos
     if community and community.strip() != '':
         params['tool_prms']['target'] = target
         code, output, error, _ = await run_task(action="scan_snmp", params=json.dumps(params), snmp_community=community)
-        return await save_log_and_return(code, output, error, log_name=f"snmp_scan_result")
+        return output
         
     params['tool_prms']['target'] = target
     code, output, error, _ = await run_task(action="scan_snmp", params=json.dumps(params))
-    return await save_log_and_return(code, output, error, log_name=f"snmp_scan_result")
+    return output
 
 @mcp.tool
 async def scan_custom(target: Annotated[str, "The network device IP or hostname to run the scan on."], options: Annotated[str, "The nmap scan options to run."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None):
@@ -167,7 +159,7 @@ async def scan_custom(target: Annotated[str, "The network device IP or hostname 
         params['tool_prms']['target'] = target
 
     code, output, error, _ = await run_task(action="scan_custom", params=json.dumps(params))
-    return await save_log_and_return(code, output, error, log_name=f"custom_scan_result")
+    return output
 
 @mcp.tool
 async def scan_map(target: Annotated[str, "The network device IP or hostname to run the scan on."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None, syn_ports: Annotated[str, "The TCP SYN ports to use for host discovery in the nmap scan. Defaults to 22,23,80,443,830,3389."] = None, ack_ports: Annotated[str, "The TCP ACK ports to use for host discovery in the nmap scan. Defaults to 80,443."] = None):
@@ -188,8 +180,7 @@ async def scan_map(target: Annotated[str, "The network device IP or hostname to 
 
     params['tool_prms']['target'] = target
     code, output, error, _ = await run_task(action="scan_full", params=json.dumps(params))
-
-    return await save_log_and_return(code, output, error, log_name=f"full_scan_result")
+    return output
 
 @mcp.tool
 async def pcap_lcl(interface: Annotated[str, "The physical network interface port the packet capture will run on. Defaults to the primary interface on the host."] = None, cap_count: Annotated[int, "The number of packets to capture. Default is set to 50."] = None):
@@ -206,8 +197,7 @@ async def pcap_lcl(interface: Annotated[str, "The physical network interface por
         params['cap_count'] = cap_count
 
     code, output, error, _ = await run_task(action="pcap_lcl", params=json.dumps(params))
-
-    return await save_log_and_return(code, output, error, log_name=f"pcap_local_result")
+    return output
 
 @mcp.tool
 async def pcap_tux(remote_interface: Annotated[str, "The physical network interface port of the remote linux host the packet capture will run on."], host: Annotated[str, "the remote linux host the packet capture will run on."], username: Annotated[str, "The username of a sudo level user of the remote linux host."], password: Annotated[str, "The password of the sudo level user on the remote linux host."], cap_count: Annotated[int, "The number of packets to capture. Default is set to 50."] = None):
@@ -229,8 +219,7 @@ async def pcap_tux(remote_interface: Annotated[str, "The physical network interf
         params['cap_count'] = cap_count
 
     code, output, error, _ = await run_task(action="pcap_tux", params=json.dumps(params))
-
-    return await save_log_and_return(code, output, error, log_name=f"pcap_tux_result")
+    return output
 
 @mcp.tool
 async def pcap_win(remote_interface: Annotated[str, "The physical network interface port of the remote windows server host the packet capture will run on."], host: Annotated[str, "the remote windows server host the packet capture will run on."], username: Annotated[str, "The username of an admin level user of the remote windows host."], password: Annotated[str, "The password of an admin level user on the remote windows host."], duration: Annotated[int, "The number of seconds the packet capture will run on the windows server host."] = None):
@@ -252,5 +241,4 @@ async def pcap_win(remote_interface: Annotated[str, "The physical network interf
         params['duration'] = duration
 
     code, output, error, _ = await run_task(action="pcap_win", params=json.dumps(params))
-
-    return await save_log_and_return(code, output, error, log_name=f"pcap_win_result")
+    return output
