@@ -17,11 +17,8 @@ from datetime import datetime, timezone
 import uuid
 
 class InitCall(BaseModel):
-    umj_site: str
     umj_api_key: str
-    prb_url: str
     prb_api_key: str
-    prb_name: str
 
 class ExecuteCall(BaseModel):
     tools_list: str
@@ -43,8 +40,9 @@ async def combined_lifespan(app:FastAPI):
         await check_for_utils()
         websocket_url = None
         prb_id, hstnm, probe_data = await init_probe()
-        websocket_url = f"wss://{os.getenv('CORE_URL')}/v1/api/core/channels/probe/heartbeat/{prb_id}"
-        logger.info(f"Probe initialized: hostname={hstnm}")
+        if probe_data['enrolled'] == 'y':
+            websocket_url = f"wss://{core_url}/channels/{prb_id}/{0}"
+            logger.info(f"Probe initialized: hostname={hstnm}")
         # idempotent guard
         if getattr(app.state, "core_client_started", False) is False:
             app.state.core_client_started = True
@@ -55,7 +53,7 @@ async def combined_lifespan(app:FastAPI):
                 logger.warning("WebSocket URL is not set; CoreClient will not be started")
                 yield
                 return
-            core_client = CoreClient(umj_websocket_url=websocket_url)
+            core_client = CoreClient(umj_websocket_url=websocket_url, connect_ws=probe_data.get('enrolled'))
             stop_event = asyncio.Event()
             app.state.core_client_stop = stop_event
             app.state.core_client = core_client
@@ -63,7 +61,7 @@ async def combined_lifespan(app:FastAPI):
             logger.info("Started CoreClient task in FastAPI lifespan")
         
         yield
-        
+
         stop_event = getattr(app.state, "core_client_stop", None)
         task = getattr(app.state, "core_client_task", None)
 
@@ -87,15 +85,15 @@ api = FastAPI(title='Network Util API', lifespan=combined_lifespan)
 
 @api.post("/v1/api/init", dependencies=[Depends(validate_api_key), Depends(rate_limiter(2, 5))])
 async def init(init_data: InitCall):
-    init_url = f"{core_url}/init?usr={os.getenv('ASSIGNED_USER')}"
+    init_url = f"{core_url}/init?usr={os.getenv('PROBE_USER')}"
     logger.info(init_url)
-    enroll_url = f"{core_url}/enroll?usr={os.getenv('ASSIGNED_USER')}&site={init_data.umj_site}"
+    enroll_url = f"{core_url}/enroll?usr={os.getenv('PROBE_USER')}&site={os.getenv('PROBE_SITE')}"
     logger.info(enroll_url)
 
     async def enrollment(payload: dict = {}):
         headers = {"X-UMJ-WFLW-API-KEY": init_data.umj_api_key}
-        post_headers = {"X-UMJ-WFLW-API-KEY": init_data.umj_api_key,
-                        "Content-Type": "application/json"}
+        post_headers = headers.copy()
+        post_headers['Content-Type'] = "application/json"
 
         resp_data = await make_http_request(cmd="g", url=init_url, headers=headers)
         if resp_data.status_code == 200:
@@ -112,12 +110,7 @@ async def init(init_data: InitCall):
         return None
     
     probe_data = await get_probe_data()
-    probe_data['url'] = os.getenv('PROBE_URL')
-    probe_data['umj_url'] = os.getenv('CORE_URL')
     probe_data['prb_api_key'] = init_data.prb_api_key
-    probe_data['site'] = init_data.umj_site
-    probe_data['name'] = init_data.prb_name
-    probe_data['assigned_user'] = os.getenv('ASSIGNED_USER')
     probe_data['available_tools'] = json.dumps(mcp.get_tools())
     logger.info(probe_data)
 
@@ -125,7 +118,6 @@ async def init(init_data: InitCall):
         return Response(status_code=400)
     else:
         await prb_db.connect_db()
-        probe_data['umj_api_key'] = init_data.umj_api_key
         probe_data.pop('prb_api_key')
         if await prb_db.upload_db_data(id=probe_data.get('prb_id'), data=probe_data) > 0:
             return Response(status_code=200)
@@ -133,7 +125,7 @@ async def init(init_data: InitCall):
             return Response(status_code=400)
 
 @api.post("/v1/api/tasks/exec", dependencies=[Depends(validate_api_key), Depends(rate_limiter(4, 10))])
-async def tasks(tool_calls: ExecuteCall = None):
+async def exec(tool_calls: ExecuteCall = None):
     probe_info=await get_probe_data()
     parser_script_path=os.path.join(utility_scripts_path, f'Parsers.py')
     selected_tools = json.loads(tool_calls.tools_list)
@@ -173,7 +165,7 @@ async def tasks(tool_calls: ExecuteCall = None):
                         "prb_id": f"{probe_info.get('prb_id')}",
                         "timestamp": f"{now}",
                         "tool_type": f"{tool.get('action')}",
-                        "flow": tool_calls.flow_name
+                        "type": f"flow_{tool_calls.flow_name}"
                                 },
                     "auto_execute": False,
                     "id": doc_id

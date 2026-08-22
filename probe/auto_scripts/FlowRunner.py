@@ -1,19 +1,20 @@
 import datetime
 import ast
 from datetime import datetime, timezone
-from probe.init_app import log_alert, logger, get_probe_data, make_http_request, utility_scripts_path, net_base, core_url
+from probe.init_app import logger, get_probe_data, make_http_request, utility_scripts_path, net_base, core_url
 from probe.net_util_api import core_url
 from script_base.base import run_task
 import json
 import argparse
 import asyncio
 import os
+import uuid
 
 class FlowRunner:
     def __init__(self):
         self.logger = logger
 
-    async def run(self, flow_str: str):
+    async def run(self, flow_str: str, flow_name: str):
         probe_data_dict = await get_probe_data()
         self.logger.info(f"Probe Data From FlowRunner: {probe_data_dict}")
         flow_dict = ast.literal_eval(flow_str)
@@ -140,8 +141,10 @@ class FlowRunner:
 
         if local_tools_to_execute != {}:
             parser_script_path = os.path.join(utility_scripts_path, f'Parsers.py')
-            task_output=""
+            documents=[]
+            main_content=""
             for node_id, tool_info in local_tools_to_execute.items():
+                now = datetime.now(tz=timezone.utc).isoformat()
                 code, output, error, file_name = await run_task(action=tool_info['tool'], params=json.dumps(tool_info['prms']), snmp_community=tool_info['prms'].get('community') if 'community' in tool_info['prms'] else None)
 
                 parser_command = f"python3 {parser_script_path} --action {tool_info['tool']} -o {output}"
@@ -157,10 +160,27 @@ class FlowRunner:
 
                 parse_code, parse_output, parse_error = await net_base.run_shell_cmd(parser_command)
 
+                content = f"Tool: {tool_info['tool']}\n"
+                content += f"Timestamp: {now}\n"
+                content += f"Raw Output:\n{output}\n"
+                content += f"Parsed Output:\n{parse_output}\n\n"
+                doc_id = f"{flow_name}_{now}_{probe_data_dict.get('prb_id')}_{str(uuid.uuid4())}"
+                
                 if parse_code == 0:
-                    task_output+=f"Task:{tool_info['tool']}\nProbe:{probe_data_dict.get('prb_id')}\nOutput: {parse_output}\n\n"
-                else:
-                    task_output+=f"Task:{tool_info['tool']}\nProbe:{probe_data_dict.get('prb_id')}\nStatus: {parse_error}\n\n"
+                                documents.append({
+                                    "tool_type": f"{tool_info['tool']}",
+                                    "output": f"{output}",
+                                    "content": content,
+                                    "metadata": {
+                                        "prb_id": f"{probe_data_dict.get('prb_id')}",
+                                        "timestamp": f"{now}",
+                                        "tool_type": f"{tool_info['tool']}",
+                                        "flow": flow_name
+                                                },
+                                    "auto_execute": False,
+                                    "id": doc_id
+                                })
+                main_content+=f"{content}\n"
 
             headers = {"X-UMJ-WFLW-API-KEY": os.getenv('UMJ_WFLW_API_KEY')}
             post_headers = headers.copy()
@@ -169,17 +189,9 @@ class FlowRunner:
             if resp_data.status_code == 200:
                 access_token = resp_data.cookies.get("access_token")
                 logger.info(access_token)
-                analysis_prompt = (
-                    f"{task_output}"
-                    + "\n\n"
-                    + f"{agents[0]['prompt']}"
-                )
-                notif_list = ','.join(alerts)
-                resp_analysis = await make_http_request(cmd='p', url=f"{core_url}/analysis", headers=post_headers, payload=json.dumps({"prompt": analysis_prompt, "name": agents[0]['agent'], "notif_list": notif_list, "prb_id": probe_data_dict.get('prb_id'), "task_output": task_output}), cookies=access_token)
-
+                resp_analysis = await make_http_request(cmd='p', url=f"{core_url}/ingest", headers=post_headers, 
+                                                        payload={'documents': json.dumps(documents)}, cookies=access_token)
                 if resp_analysis.status_code == 200:
-                    timestamp = datetime.now(tz=timezone.utc).isoformat()
-                    await log_alert.write_log(log_name=f"{tool_info['tool']}_result_{timestamp}", message=task_output)
                     return
     
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ from crontab import CronTab
 from utils.RedisDB import RedisDB
 from utils.network_utils.base.Network import Network
 import httpx
+import uuid
 
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger('passlib').setLevel(logging.ERROR)
@@ -73,23 +74,34 @@ async def init_probe():
         prb_id, hstnm = probe_util.gen_probe_register_data()
         probe_data=probe_util.collect_local_stats()
         probe_data['prb_id'] = prb_id
+        probe_data['site'] = os.getenv('PROBE_SITE')
         probe_data['hstnm'] = hstnm
+        probe_data['url'] = os.getenv('PROBE_URL')
+        probe_data['umj_url'] = os.getenv('CORE_URL')
+        probe_data['name'] = os.getenv('PROBE_NAME')
+        probe_data['assigned_user'] = os.getenv('PROBE_USER')
         host_interfaces = probe_util.get_ifaces()
         probe_data['iface_list'] = host_interfaces
+        probe_data['enrolled'] = 'n'
+        new_api_key = str(uuid.uuid4())
+        api_hashed = bcrypt.hashpw(new_api_key, bcrypt.gensalt())
+        probe_data['api_key'] = api_hashed
         logger.info(host_interfaces)
         if await prb_db.upload_db_data(id=f"{prb_id}", data=probe_data) > 0:
-            logger.info(f"Successfully uploaded probe data to Redis for probe ID: {prb_id}")
+            logger.info(f"""ATTENTION: Your API Key for Probe ID: {prb_id} is below. 
+            Please copy and store in a password manager of your choice for safe keeping. This willl not be displayed again.\n
+
+            API KEY: {new_api_key}
+            
+            """)
             return prb_id, hstnm, probe_data
     elif probe_data_check is True:
-        probe_stats = probe_util.collect_local_stats()
         probe_data = await prb_db.get_all_data(match='*prb:*')
         probe_data_dict = next(iter(probe_data.values()))
         prb_id = probe_data_dict.get('prb_id')
         hstnm = probe_data_dict.get('hstnm')
-        if await prb_db.upload_db_data(id=prb_id, data=probe_stats) > 0:
-            updated_probe_data = await prb_db.get_all_data(match='*prb:*')
-            parsed_updated_probe_data = next(iter(updated_probe_data.values()))
-            return prb_id, hstnm, parsed_updated_probe_data
+        return prb_id, hstnm, probe_data_dict
+            
     
 async def check_api_key(key: str):
     probe_data = await prb_db.get_all_data(match='*prb:*')
