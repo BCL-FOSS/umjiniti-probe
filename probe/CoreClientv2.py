@@ -5,7 +5,9 @@ from websockets.sync.client import connect
 import json
 from typing import Optional
 import asyncio
-from probe.init_app import logger, get_probe_data, probe_util
+from probe.init_app import logger, get_probe_data, probe_util, parser_script_path, net_base
+from probe.auto_scripts.script_base.base import run_task
+from datetime import datetime, timezone
 
 class CoreClient:
     def __init__(self, umj_ws_url: str | None, connect_ws: str = 'n'):
@@ -55,6 +57,8 @@ class CoreClient:
                         self.logger.info("connect_with_backoff cancelled")
                     except Exception as e:
                         self.logger.exception(f"Unexpected error connecting websocket: {e}")
+        else:
+            pass
 
         self.logger.info("CoreClient: exiting connect_with_backoff")
 
@@ -103,6 +107,37 @@ class CoreClient:
                     self.logger.exception("Stat collect: failed to send ping")
                     break
                 try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=900.0)
+                    break
+                except asyncio.TimeoutError:
+                    continue
+
+        async def _map_network():
+            while not stop_event.is_set() and not getattr(self, "_internal_stop", False):
+                now = datetime.now(tz=timezone.utc).isoformat()
+                code, output, error , file_name = await run_task(action='scan_map')
+                if code == 0:
+                    parser_command = f"python3 {parser_script_path} --action 'scan_map' -o {output} --file {file_name}"                                 
+                    parse_code, parse_output, parse_error = await net_base.run_shell_cmd(parser_command)
+                    if parse_code == 0:
+                        payload = {
+                            "sess_id": probe_obj.get('prb_id'),
+                            "act": "map",
+                            "map": parse_output,
+                            "raw_map": output,
+                            "timestamp": now
+                        }
+                try:
+                    await ws.send(json.dumps(payload))
+                except websockets.ConnectionClosed:
+                    self.logger.warning("Stat collect: connection closed")
+                    break
+                except asyncio.CancelledError:
+                    break
+                except Exception:
+                    self.logger.exception("Stat collect: failed to send ping")
+                    break
+                try:
                     await asyncio.wait_for(stop_event.wait(), timeout=600.0)
                     break
                 except asyncio.TimeoutError:
@@ -110,7 +145,8 @@ class CoreClient:
        
         hb_task = asyncio.create_task(_heartbeat())
         updt_task = asyncio.create_task(_probe_stats_update())
-        done, pending = await asyncio.wait([hb_task, updt_task], return_when=asyncio.FIRST_COMPLETED)
+        map_task = asyncio.create_task(_map_network())
+        done, pending = await asyncio.wait([hb_task, updt_task, map_task], return_when=asyncio.FIRST_COMPLETED)
 
         for t in pending:
             t.cancel()

@@ -2,7 +2,7 @@ import datetime
 import ast
 from datetime import datetime, timezone
 from probe.init_app import logger, get_probe_data, make_http_request, utility_scripts_path, net_base, core_url
-from probe.net_util_api import core_url
+from probe.net_util_api import core_url, mcp
 from script_base.base import run_task
 import json
 import argparse
@@ -24,7 +24,7 @@ class FlowRunner:
         workflow_data = workflow['drawflow']['Home']['data']
         self.logger.info(workflow_data)
         alerts = []
-        agents = [{}]
+        agents = {}
         local_tools_to_execute = {}
         for node_id, node in workflow_data.items():
             node_data = node.get('data')
@@ -136,13 +136,16 @@ class FlowRunner:
 
                 case 'smartbot':
                     if node_data['bot-prompt']:
-                        agents[0]['prompt'] = node_data['bot-prompt']
-                        agents[0]['agent'] = node_data['name']
+                        agents['prompt'] = node_data['bot-prompt']
+                        agents['agent'] = node_data['name']
 
         if local_tools_to_execute != {}:
             parser_script_path = os.path.join(utility_scripts_path, f'Parsers.py')
             documents=[]
-            main_content=""
+            main_content=f"""
+                ##################################################################
+                network Tool(s) Output for Probe: {probe_data_dict.get('prb_id')}\n\n
+                """
             for node_id, tool_info in local_tools_to_execute.items():
                 now = datetime.now(tz=timezone.utc).isoformat()
                 code, output, error, file_name = await run_task(action=tool_info['tool'], params=json.dumps(tool_info['prms']), snmp_community=tool_info['prms'].get('community') if 'community' in tool_info['prms'] else None)
@@ -182,17 +185,29 @@ class FlowRunner:
                                 })
                 main_content+=f"{content}\n"
 
-            headers = {"X-UMJ-WFLW-API-KEY": os.getenv('UMJ_WFLW_API_KEY')}
-            post_headers = headers.copy()
-            post_headers["Content-Type"] = "application/json"
-            resp_data = await make_http_request(cmd='g', url=f"{core_url}/init?usr={os.getenv('ASSIGNED_USER')}", headers=headers)
+            main_content+=f"""######################################################################\n\n\n"""
+            resp_data = await make_http_request(cmd='g', url=f"{core_url}/init", api_key=os.getenv('UMJ_WFLW_API_KEY'))
             if resp_data.status_code == 200:
                 access_token = resp_data.cookies.get("access_token")
                 logger.info(access_token)
-                resp_analysis = await make_http_request(cmd='p', url=f"{core_url}/ingest", headers=post_headers, 
-                                                        payload={'documents': json.dumps(documents)}, cookies=access_token)
-                if resp_analysis.status_code == 200:
-                    return
+                resp_ingest = await make_http_request(cmd='p', url=f"{core_url}/ingest", api_key=os.getenv('UMJ_WFLW_API_KEY'), 
+                                            payload={'documents': json.dumps(documents)}, token=access_token)
+                if resp_ingest.status_code == 200 and agents['prompt']:
+                    all_tools = await mcp.get_tools()
+                    anlys_payload = {
+                        'content': main_content,
+                        'metadata': json.dumps({"type": f"flow_{flow_name}"}),
+                        'tool_instructions': json.dumps(all_tools),
+                        'detect_type': 1,
+                        'prompt': agents['prompt'],
+                        'flow_name': flow_name
+                    }
+
+                    resp_ingest = await make_http_request(cmd='p', url=f"{core_url}/analysis", api_key=os.getenv('UMJ_WFLW_API_KEY'), 
+                        payload=anlys_payload, token=access_token)
+
+                    if resp_ingest.status_code == 200:
+                        logger.info(f'Flow {flow_name} complete')
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run local network automation workflows.")

@@ -32,7 +32,7 @@ class RedisDB:
 
     async def upload_db_data(self, id = '', data = {}):
         try: 
-
+            await self.connect_db()
             str_hashmap = {str(k): str(v) for k, v in data.items()}
             result = await self.redis_conn.hset(id, mapping=str_hashmap)
 
@@ -48,6 +48,7 @@ class RedisDB:
 
     async def get_all_data(self, match='*', cnfrm=False):
         try:
+            await self.connect_db()
             all_data = {}
             cursor = b'0'  # Start the SCAN with cursor 0
 
@@ -79,6 +80,7 @@ class RedisDB:
         
     async def get_obj_data(self, key=''):
         try:
+            await self.connect_db()
             probe = await self.redis_conn.hgetall(key)
 
             if probe:
@@ -93,6 +95,7 @@ class RedisDB:
 
     async def del_obj(self, key=''):
         try:
+            await self.connect_db()
             probe = await self.redis_conn.delete(key)
 
             if probe:
@@ -100,42 +103,6 @@ class RedisDB:
             else:
                 return None
                 
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-        finally:
-            await self.redis_conn.close()
-
-async def set_stream_msg(self, key: str, message: dict):
-        try:
-           
-            result = await self.redis_conn.xadd(name=key, fields={"message": json.dumps(message)})
-
-            return result if result is not None else None
-
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-        finally:
-            await self.redis_conn.close()
-
-async def get_stream_msgs(self, key: str, last_id: str = '0'):
-        try:
-            # Read last 100 messages
-            messages = await self.redis_conn.xrange(name=key, min=last_id, max="+", count=100)
-
-            return messages if messages is not None else None
-            
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-        finally:
-            await self.redis_conn.close()
-
-async def del_stream_msgs(self, key: str):
-        try:
-            # Read last 100 messages
-            messages = await self.redis_conn.xdel(name=key)
-
-            return messages if messages is not None else None
-            
         except Exception as e:
             return json.dumps({"error": str(e)})
         finally:

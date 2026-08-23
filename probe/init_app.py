@@ -49,6 +49,7 @@ cwd = os.getcwd()
 utility_scripts_path = os.path.join(cwd, 'utils', 'jini-utils')
 automation_scripts_path = os.path.join(cwd, 'auto_scripts')
 nmap_scans_path = os.path.join(cwd, 'nmap_scans')
+parser_script_path=os.path.join(utility_scripts_path, f'Parsers.py')
 core_url = f"https://{os.getenv('CORE_URL')}/v1/api/core/probes"
 
 async def get_probe_data():
@@ -144,12 +145,18 @@ async def validate_mcp_api_key(headers: dict[str, str]) -> None:
         )
     await check_api_key(key)
     
-async def make_http_request(cmd: str, url: str, payload: dict = {}, headers: dict = {}, cookies: str = ''):
+async def make_http_request(cmd: str, url: str, api_key: str, payload: dict = {}, cookies: str = None, cookie_name: str = None, token: str = None):
     async with httpx.AsyncClient() as client:
-        if cmd == 'p':
-            client.cookies.set("access_token", value=cookies)
-            post_result = await client.post(url, json=payload, headers=headers)
-            return post_result
-        elif cmd == 'g':
-            get_result = await client.get(url, headers=headers)
-            return get_result
+        headers={'X-UMJ-WFLW-API-KEY': api_key}
+        if token is not None:
+            headers['Authorization'] = f'Bearer {token}'
+        if cookies is not None:
+            client.cookies.set(cookie_name, value=cookies)
+        match cmd:
+            case 'p':
+                headers['Content-Type'] = 'application/json'
+                post_result = await client.post(url, json=payload, headers=headers)
+                return post_result
+            case 'g':
+                get_result = await client.get(url, headers=headers)
+                return get_result

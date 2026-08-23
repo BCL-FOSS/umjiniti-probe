@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from init_app import (
     validate_api_key,
     init_probe, logger, prb_db, cron, check_for_utils,
-    make_http_request, core_url, utility_scripts_path, get_probe_data, net_base, automation_scripts_path
+    make_http_request, core_url, utility_scripts_path, get_probe_data, net_base, automation_scripts_path, parser_script_path
 )
 from net_util_mcp import mcp
 from CoreClientv2 import CoreClient
@@ -85,33 +85,30 @@ api = FastAPI(title='Network Util API', lifespan=combined_lifespan)
 
 @api.post("/v1/api/init", dependencies=[Depends(validate_api_key), Depends(rate_limiter(2, 5))])
 async def init(init_data: InitCall):
-    init_url = f"{core_url}/init?usr={os.getenv('PROBE_USER')}"
+    init_url = f"{core_url}/init"
     logger.info(init_url)
-    enroll_url = f"{core_url}/enroll?usr={os.getenv('PROBE_USER')}&site={os.getenv('PROBE_SITE')}"
+    enroll_url = f"{core_url}/enroll?site={os.getenv('PROBE_SITE')}"
     logger.info(enroll_url)
 
     async def enrollment(payload: dict = {}):
-        headers = {"X-UMJ-WFLW-API-KEY": init_data.umj_api_key}
-        post_headers = headers.copy()
-        post_headers['Content-Type'] = "application/json"
-
-        resp_data = await make_http_request(cmd="g", url=init_url, headers=headers)
+        resp_data = await make_http_request(cmd="g", url=init_url, api_key=os.getenv('UMJ_WFLW_API_KEY'))
         if resp_data.status_code == 200:
             access_token = resp_data.cookies.get("access_token")
             logger.info(access_token)
             enroll_rqst = await make_http_request(
                 cmd="p",
                 url=enroll_url,
-                headers=post_headers,
-                cookies=access_token,
+                api_key=os.getenv('UMJ_WFLW_API_KEY'),
                 payload=payload,
+                token=access_token
             )
             return 200 if enroll_rqst.status_code == 200 else 400
         return None
-    
+
+    all_tools = await mcp.get_tools()
     probe_data = await get_probe_data()
     probe_data['prb_api_key'] = init_data.prb_api_key
-    probe_data['available_tools'] = json.dumps(mcp.get_tools())
+    probe_data['available_tools'] = json.dumps(all_tools)
     logger.info(probe_data)
 
     if await enrollment(payload=probe_data) != 200:
@@ -119,6 +116,7 @@ async def init(init_data: InitCall):
     else:
         await prb_db.connect_db()
         probe_data.pop('prb_api_key')
+        probe_data['enrolled']='y'
         if await prb_db.upload_db_data(id=probe_data.get('prb_id'), data=probe_data) > 0:
             return Response(status_code=200)
         else:
@@ -127,11 +125,13 @@ async def init(init_data: InitCall):
 @api.post("/v1/api/tasks/exec", dependencies=[Depends(validate_api_key), Depends(rate_limiter(4, 10))])
 async def exec(tool_calls: ExecuteCall = None):
     probe_info=await get_probe_data()
-    parser_script_path=os.path.join(utility_scripts_path, f'Parsers.py')
     selected_tools = json.loads(tool_calls.tools_list)
     documents=[]
     
-    main_content=f"network Tool(s) Output for Probe: {probe_info.get('prb_id')}\n\n"
+    main_content=f"""
+    ##################################################################
+    network Tool(s) Output for Probe: {probe_info.get('prb_id')}\n\n
+    """
     for tool in selected_tools:
         now = datetime.now(tz=timezone.utc).isoformat()
         code, output, error, file_name = await run_task(action=tool.get('action'), params=json.dumps(tool.get('params')), snmp_community=tool.get('params').get('community') if 'community' in tool.get('params') else None)
@@ -149,6 +149,14 @@ async def exec(tool_calls: ExecuteCall = None):
                 parser_command+=f' -i {tool.get('params')["tool_prms"]["interface"]}'
                     
             parse_code, parse_output, parse_error = await net_base.run_shell_cmd(parser_command)
+
+            output_data = {
+                'parsed': parse_output,
+                'tool_type': tool.get('action')
+            }
+
+            if await prb_db.upload_db_data(id=f"output:{tool.get('action')}:{str(uuid.uuid4())}", data=output_data) is None:
+                logger.info('output upload failed')
 
             content = f"Tool: {tool.get('action')}\n"
             content += f"Timestamp: {now}\n"
@@ -170,11 +178,14 @@ async def exec(tool_calls: ExecuteCall = None):
                     "auto_execute": False,
                     "id": doc_id
                 })
-                main_content+=f"{content}\n"
+                main_content+=f"""{content}\n
+                """
             else:
                 pass
-           
-    return Response(content={'output': json.dumps(documents), 'anlys_output': main_content}, media_type="application/json", status_code=200)
+    
+    all_tools = await mcp.get_tools()    
+    main_content+=f"""######################################################################\n\n\n"""
+    return Response(content={'output': json.dumps(documents), 'anlys_output': main_content, 'tools': json.dumps(all_tools), 'parsed_output': json.dumps(output_data)}, media_type="application/json", status_code=200)
 
 @api.get("/v1/api/flows/{command}", dependencies=[Depends(validate_api_key), Depends(rate_limiter(4, 10))])
 async def flows(command: str, flow_calls: FlowCall = None):

@@ -1,13 +1,12 @@
 
-from probe.init_app import action_map, probe_util, net_discovery, pcap, nmap_scans_path
+from probe.init_app import action_map, probe_util, nmap_scans_path, pcap, net_discovery
 import os
 import json
 from datetime import datetime, timezone
 from crontab import CronTab
 
 async def run_task(action: str, params: str = None, snmp_community: str = None):
-
-    params_dict = json.loads(params) if params else None
+    params_dict = json.loads(params) if params else {}
     file_name = None
             
     if action == 'pcap_tux' or action == 'pcap_win':
@@ -27,10 +26,13 @@ async def run_task(action: str, params: str = None, snmp_community: str = None):
         if action == 'scan_snmp' and snmp_community is not None:
             net_discovery.set_community_string(snmp_community)
 
-        if 'target' not in params_dict['tool_prms'] and 'interface' not in params_dict:     
-            params_dict['tool_prms']['target'] = probe_util.get_interface_subnet(interface=os.environ.get('DEFAULT_INTERFACE'))['network'] if os.environ.get('DEFAULT_INTERFACE') else probe_util.get_interface_subnet(interface=probe_util.get_ifaces()[0])['network']
-
-            iface = os.environ.get('DEFAULT_INTERFACE') if os.environ.get('DEFAULT_INTERFACE') else probe_util.get_ifaces()[0]
+        if 'target' not in params_dict['tool_prms'] and 'interface' not in params_dict:  
+            if os.environ.get('DEFAULT_INTERFACE'):   
+                params_dict['tool_prms']['target'] = probe_util.get_interface_subnet(interface=os.environ.get('DEFAULT_INTERFACE'))['network']  
+                iface = os.environ.get('DEFAULT_INTERFACE')
+            else:
+                params_dict['tool_prms']['target'] = probe_util.get_interface_subnet(interface=probe_util.get_ifaces()[0])['network']
+                iface = probe_util.get_ifaces()[0]
             net_discovery.set_interface(iface)
         elif 'target' in params_dict['tool_prms'] and 'interface' in params_dict:
             net_discovery.set_interface(params_dict['interface'])
