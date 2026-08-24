@@ -143,7 +143,7 @@ class FlowRunner:
             parser_script_path = os.path.join(utility_scripts_path, f'Parsers.py')
             documents=[]
             main_content=f"""
-                ##################################################################
+                ######################################################################\n
                 network Tool(s) Output for Probe: {probe_data_dict.get('prb_id')}\n\n
                 """
             for node_id, tool_info in local_tools_to_execute.items():
@@ -170,19 +170,21 @@ class FlowRunner:
                 doc_id = f"{flow_name}_{now}_{probe_data_dict.get('prb_id')}_{str(uuid.uuid4())}"
                 
                 if parse_code == 0:
-                                documents.append({
-                                    "tool_type": f"{tool_info['tool']}",
-                                    "output": f"{output}",
-                                    "content": content,
-                                    "metadata": {
-                                        "prb_id": f"{probe_data_dict.get('prb_id')}",
-                                        "timestamp": f"{now}",
-                                        "tool_type": f"{tool_info['tool']}",
-                                        "flow": flow_name
-                                                },
-                                    "auto_execute": False,
-                                    "id": doc_id
-                                })
+                    documents.append({
+                        "tool_type": f"{tool_info['tool']}",
+                        "output": f"{output}",
+                        "content": content,
+                        "metadata": {
+                            "prb_id": f"{probe_data_dict.get('prb_id')}",
+                            "timestamp": f"{now}",
+                            "tool_type": f"{tool_info['tool']}",
+                            "type": f"flow_{flow_name}"
+                        },
+                        "auto_execute": False,
+                        "id": doc_id,
+                        "prb_id": f"{probe_data_dict.get('prb_id')}",
+                        "timestamp": f"{now}"
+                    })
                 main_content+=f"{content}\n"
 
             main_content+=f"""######################################################################\n\n\n"""
@@ -203,10 +205,10 @@ class FlowRunner:
                         'flow_name': flow_name
                     }
 
-                    resp_ingest = await make_http_request(cmd='p', url=f"{core_url}/analysis", api_key=os.getenv('UMJ_WFLW_API_KEY'), 
+                    resp_analysis = await make_http_request(cmd='p', url=f"{core_url}/analysis", api_key=os.getenv('UMJ_WFLW_API_KEY'), 
                         payload=anlys_payload, token=access_token)
 
-                    if resp_ingest.status_code == 200:
+                    if resp_analysis.status_code == 200:
                         logger.info(f'Flow {flow_name} complete')
     
 if __name__ == "__main__":

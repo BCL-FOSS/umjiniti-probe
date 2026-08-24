@@ -129,7 +129,7 @@ async def exec(tool_calls: ExecuteCall = None):
     documents=[]
     
     main_content=f"""
-    ##################################################################
+    #########################################################################
     network Tool(s) Output for Probe: {probe_info.get('prb_id')}\n\n
     """
     for tool in selected_tools:
@@ -168,6 +168,7 @@ async def exec(tool_calls: ExecuteCall = None):
                 documents.append({
                     "tool_type": f"{tool.get('action')}",
                     "output": f"{output}",
+                    "raw_output": f"{parse_output}",
                     "content": content,
                     "metadata": {
                         "prb_id": f"{probe_info.get('prb_id')}",
@@ -176,7 +177,9 @@ async def exec(tool_calls: ExecuteCall = None):
                         "type": f"flow_{tool_calls.flow_name}"
                                 },
                     "auto_execute": False,
-                    "id": doc_id
+                    "id": doc_id,
+                    "timestamp": f"{now}",
+                    "prb_id": f"{probe_info.get('prb_id')}"
                 })
                 main_content+=f"""{content}\n
                 """
