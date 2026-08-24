@@ -167,8 +167,8 @@ async def exec(tool_calls: ExecuteCall = None):
             if parse_code == 0:
                 documents.append({
                     "tool_type": f"{tool.get('action')}",
-                    "output": f"{output}",
-                    "raw_output": f"{parse_output}",
+                    "raw_output": f"{output}",
+                    "parsed_output": f"{parse_output}",
                     "content": content,
                     "metadata": {
                         "prb_id": f"{probe_info.get('prb_id')}",

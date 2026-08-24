@@ -172,7 +172,8 @@ class FlowRunner:
                 if parse_code == 0:
                     documents.append({
                         "tool_type": f"{tool_info['tool']}",
-                        "output": f"{output}",
+                        "raw_output": f"{output}",
+                        "parsed_output": parse_output,
                         "content": content,
                         "metadata": {
                             "prb_id": f"{probe_data_dict.get('prb_id')}",
