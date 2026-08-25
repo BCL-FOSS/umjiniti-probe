@@ -199,7 +199,8 @@ async def flows(command: str, flow_calls: FlowCall = None):
                 'prb_id': probe_data.get('prb_id'),
                 'flow': flow_calls.flow,
                 'user_id': flow_calls.user_id,
-                'schedule': flow_calls.schedule
+                'schedule': flow_calls.schedule,
+                'id': 'default'
             }
             job1 = None 
             now = datetime.now(tz=timezone.utc).isoformat()
@@ -212,8 +213,23 @@ async def flows(command: str, flow_calls: FlowCall = None):
             if await asyncio.to_thread(scheduled_job.is_valid):
                 await asyncio.to_thread(cron.write)
                 flow_payload['comment'] = job_comment
-                if await prb_db.upload_db_data(id=flow_payload['comment'], data=flow_payload) > 0:
-                    return Response(content=json.dumps({'comment': flow_payload['comment']}), media_type="application/json", status_code=200)
+                init_url = f"{core_url}/init"
+                flow_url = f"{core_url}/flow/new"
+                async def flow_upload(payload: dict = {}):
+                    resp_data = await make_http_request(cmd="g", url=init_url, api_key=os.getenv('UMJ_WFLW_API_KEY'))
+                    if resp_data.status_code == 200:
+                        access_token = resp_data.cookies.get("access_token")
+                        flow_rqst = await make_http_request(
+                                cmd="p",
+                                url=flow_url,
+                                payload=payload,
+                                token=access_token
+                            )
+                        return flow_rqst.status_code
+                if await flow_upload(payload=flow_payload) == 200:
+                    return Response(status_code=200)
+                else:
+                    return Response(status_code=400)
             else:
                 return Response(status_code=400)
         case 'disable':

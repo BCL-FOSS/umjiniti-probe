@@ -145,9 +145,11 @@ async def validate_mcp_api_key(headers: dict[str, str]) -> None:
         )
     await check_api_key(key)
     
-async def make_http_request(cmd: str, url: str, api_key: str, payload: dict = {}, cookies: str = None, cookie_name: str = None, token: str = None):
+async def make_http_request(cmd: str, url: str, payload: dict = {}, api_key: str = None, cookies: str = None, cookie_name: str = None, token: str = None):
     async with httpx.AsyncClient() as client:
-        headers={'X-UMJ-WFLW-API-KEY': api_key}
+        headers={}
+        if api_key is not None:
+            headers['X-UMJ-WFLW-API-KEY'] = api_key
         if token is not None:
             headers['Authorization'] = f'Bearer {token}'
         if cookies is not None:
