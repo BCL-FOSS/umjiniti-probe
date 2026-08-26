@@ -193,24 +193,28 @@ class FlowRunner:
             if resp_data.status_code == 200:
                 access_token = resp_data.cookies.get("access_token")
                 logger.info(access_token)
-                resp_ingest = await make_http_request(cmd='p', url=f"{core_url}/ingest", api_key=os.getenv('UMJ_WFLW_API_KEY'), 
-                                            payload={'documents': json.dumps(documents)}, token=access_token)
-                if resp_ingest.status_code == 200 and agents['prompt']:
-                    all_tools = await mcp.get_tools()
-                    anlys_payload = {
+                all_tools = await mcp.get_tools()
+                ingest_payload = {
                         'content': main_content,
-                        'metadata': json.dumps({"type": f"flow_{flow_name}"}),
+                        'metadata': json.dumps({"type": f"flow_{flow_name}", "prb_id": f"{probe_data_dict.get('prb_id')}"}),
                         'tool_instructions': json.dumps(all_tools),
-                        'detect_type': 1,
-                        'prompt': agents['prompt'],
-                        'flow_name': flow_name
+                        'detect_type': 2,
+                        'prompt': agents.get('prompt') if agents.get('prompt') else None,
+                        'flow_name': flow_name,
+                        'documents': json.dumps(documents),
+                        'available_tools': json.dumps(all_tools),
+                        'site': probe_data_dict.get('site'),
+                        'name': probe_data_dict.get('name'),
+                        "prb_id": f"{probe_data_dict.get('prb_id')}"
+
                     }
-
-                    resp_analysis = await make_http_request(cmd='p', url=f"{core_url}/analysis", api_key=os.getenv('UMJ_WFLW_API_KEY'), 
-                        payload=anlys_payload, token=access_token)
-
-                    if resp_analysis.status_code == 200:
-                        logger.info(f'Flow {flow_name} complete')
+                resp_ingest = await make_http_request(cmd='p', url=f"{core_url}/ingest", api_key=os.getenv('UMJ_WFLW_API_KEY'), 
+                    payload=ingest_payload, token=access_token)
+                if resp_ingest.status_code == 200:
+                    return
+                else:
+                    logger.info(f'{flow_name} ingest/analysis failed')
+                    return
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run local network automation workflows.")
