@@ -13,6 +13,7 @@ import asyncio
 from auto_scripts.script_base.base import run_task, schedule_cronjob
 import json
 import os
+import shlex
 from datetime import datetime, timezone
 import uuid
 
@@ -142,11 +143,16 @@ async def exec(tool_calls: ExecuteCall = None):
             if str(tool.get('action')).startswith('scan'):
                 parser_command+=f' --file {file_name}'
                     
+            tool_prms = (tool.get('params') or {}).get('tool_prms') or {}
+
             if str(tool.get('action')).startswith('trcrt'):
-                parser_command+=f' -tar {tool.get('params')["tool_prms"]["target"]} -pid {probe_info.get("prb_id")}'
-                    
+                target = shlex.quote(str(tool_prms.get('target', '')))
+                prb_id = shlex.quote(str(probe_info.get('prb_id', '')))
+                parser_command += f' -tar {target} -pid {prb_id}'
+
             if str(tool.get('action')).startswith('pcap_'):
-                parser_command+=f' -i {tool.get('params')["tool_prms"]["interface"]}'
+                interface = shlex.quote(str(tool_prms.get('interface', '')))
+                parser_command += f' -i {interface}'
                     
             parse_code, parse_output, parse_error = await net_base.run_shell_cmd(parser_command)
 

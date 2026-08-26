@@ -470,14 +470,16 @@ class ProbeInfo(Network):
         try:
             result = subprocess.run(['sysctl', 'net.pf.enabled'], capture_output=True, text=True)
             return 'net.pf.enabled: 1' in result.stdout
-        except:
+        except (OSError, subprocess.SubprocessError) as e:
+            self.logger.debug(f"pf status unavailable: {e}")
             return False
 
     def is_ipfw_enabled(self):
         try:
             result = subprocess.run(['sysctl', 'net.inet.ip.fw.enable'], capture_output=True, text=True)
             return 'net.inet.ip.fw.enable: 1' in result.stdout
-        except:
+        except (OSError, subprocess.SubprocessError) as e:
+            self.logger.debug(f"ipfw status unavailable: {e}")
             return False
     
 
