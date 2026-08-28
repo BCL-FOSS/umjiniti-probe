@@ -92,14 +92,14 @@ async def init(init_data: InitCall):
     logger.info(enroll_url)
 
     async def enrollment(payload: dict = {}):
-        resp_data = await make_http_request(cmd="g", url=init_url, api_key=os.getenv('UMJ_WFLW_API_KEY'))
+        resp_data = await make_http_request(cmd="g", url=init_url, api_key=init_data.umj_api_key)
         if resp_data.status_code == 200:
             access_token = resp_data.cookies.get("access_token")
             logger.info(access_token)
             enroll_rqst = await make_http_request(
                 cmd="p",
                 url=enroll_url,
-                api_key=os.getenv('UMJ_WFLW_API_KEY'),
+                api_key=init_data.umj_api_key,
                 payload=payload,
                 token=access_token
             )

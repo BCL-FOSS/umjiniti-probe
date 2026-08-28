@@ -86,7 +86,7 @@ async def trcrt_dns(target: Annotated[str, "The server or endpoint to trace."], 
     return output
 
 @mcp.tool
-async def scan_vuln(target: Annotated[str, "The subnet, network device IP or hostname to run the scan on."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None, min_score: Annotated[int, "The minimum CVSS score to filter vulnerabilities. Defaults to 5."] = None):
+async def scan_vuln(target: Annotated[str, "The subnet, range of IPs or specific IP the scan will be run on."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None, min_score: Annotated[int, "The minimum CVSS score to filter vulnerabilities. Defaults to 5."] = None):
     """scan_vuln runs a vulnerability scan against the specified target. will return list of CVEs with a CVSS score of 5 or higher by default. The scan uses the nmap vulners script which leverages the vulners.com vulnerability database to perform vulnerability detection based on the software and services running on the target host(s)."""
      
     header_data = get_http_headers()
@@ -104,7 +104,7 @@ async def scan_vuln(target: Annotated[str, "The subnet, network device IP or hos
     return output
 
 @mcp.tool
-async def scan_srvc(target: Annotated[str, "The subnet, network device IP or hostname to run the scan on."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None):
+async def scan_srvc(target: Annotated[str, "The subnet, range of IPs or specific IP the scan will be run on."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None):
     """Identifies all running services on the specified target by performing a nmap service/version detection scan (-sV)."""
      
     header_data = get_http_headers()
@@ -119,7 +119,7 @@ async def scan_srvc(target: Annotated[str, "The subnet, network device IP or hos
     return output
 
 @mcp.tool
-async def scan_snmp(target: Annotated[str, "The subnet, network device IP or hostname to run the scan on."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None,  scripts: Annotated[str, "The nmap SNMP scan scripts to run. Defaults scripts retrieve system decriptions and system network interface data."] = None, community: Annotated[str, "The SNMP community string to use for the scan."] = None):
+async def scan_snmp(target: Annotated[str, "The subnet, range of IPs or specific IP the scan will be run on."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None,  scripts: Annotated[str, "The nmap SNMP scan scripts to run. Defaults scripts retrieve system decriptions and system network interface data."] = None, community: Annotated[str, "The SNMP community string to use for the scan."] = None):
     """SNMP scan identifies SNMP capable network devices, runs specified nmap SNMP scripts to perform SNMPv3 GET requests and SNMP polling and retireves all available SNMP data for the specified target."""
      
     header_data = get_http_headers()
@@ -142,7 +142,7 @@ async def scan_snmp(target: Annotated[str, "The subnet, network device IP or hos
     return output
 
 @mcp.tool
-async def scan_custom(target: Annotated[str, "The network device IP or hostname to run the scan on."], options: Annotated[str, "The nmap scan options to run."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None):
+async def scan_custom(target: Annotated[str, "The subnet, range of IPs or specific IP the scan will be run on."], options: Annotated[str, "The nmap scan options to run."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None):
     """Custom scan runs an nmap scan with the specified commandline options on all devices within a subnet or on the specified network host target."""
      
     header_data = get_http_headers()
@@ -162,7 +162,7 @@ async def scan_custom(target: Annotated[str, "The network device IP or hostname 
     return output
 
 @mcp.tool
-async def scan_map(target: Annotated[str, "The network device IP or hostname to run the scan on."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None, syn_ports: Annotated[str, "The TCP SYN ports to use for host discovery in the nmap scan. Defaults to 22,23,80,443,830,3389."] = None, ack_ports: Annotated[str, "The TCP ACK ports to use for host discovery in the nmap scan. Defaults to 80,443."] = None):
+async def scan_map(target: Annotated[str, "The subnet, range of IPs or specific IP the scan will be run on."], interface: Annotated[str, "The physical network interface port the scan will run on. Defaults to the primary interface on the host."] = None, syn_ports: Annotated[str, "The TCP SYN ports to use for host discovery in the nmap scan. Defaults to 22,23,80,443,830,3389."] = None, ack_ports: Annotated[str, "The TCP ACK ports to use for host discovery in the nmap scan. Defaults to 80,443."] = None):
     """Full scan runs a full network device discovery an a specified subnet. Enable OS detection, version detection, script scanning, and traceroute."""
 
     header_data = get_http_headers()

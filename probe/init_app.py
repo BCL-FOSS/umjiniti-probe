@@ -27,6 +27,7 @@ net_base = Network()
 pcap = PacketCapture()
 probe_util = ProbeInfo()
 cron=CronTab(user='root')  
+web_client = httpx.AsyncClient()
 action_map: dict[str, Callable[[dict], object]] = {
     "trcrt_dns": net_test.dnstraceroute,
     "trcrt": net_test.traceroute,
@@ -51,6 +52,13 @@ automation_scripts_path = os.path.join(cwd, 'auto_scripts')
 nmap_scans_path = os.path.join(cwd, 'nmap_scans')
 parser_script_path=os.path.join(utility_scripts_path, f'Parsers.py')
 core_url = f"https://{os.getenv('CORE_URL')}/v1/api/core/probes"
+
+def as_bytes(value):
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        return value
+    return str(value).encode()
 
 async def get_probe_data():
     await prb_db.connect_db()
@@ -85,7 +93,7 @@ async def init_probe():
         probe_data['iface_list'] = host_interfaces
         probe_data['enrolled'] = 'n'
         new_api_key = str(uuid.uuid4())
-        api_hashed = bcrypt.hashpw(new_api_key, bcrypt.gensalt())
+        api_hashed = bcrypt.hashpw(new_api_key.encode(), bcrypt.gensalt())
         probe_data['api_key'] = api_hashed
         logger.info(host_interfaces)
         if await prb_db.upload_db_data(id=f"{prb_id}", data=probe_data) > 0:
@@ -99,8 +107,8 @@ async def init_probe():
     elif probe_data_check is True:
         probe_data = await prb_db.get_all_data(match='*prb:*')
         probe_data_dict = next(iter(probe_data.values()))
-        prb_id = probe_data_dict.get('prb_id')
-        hstnm = probe_data_dict.get('hstnm')
+        prb_id = str(probe_data_dict.get('prb_id'))
+        hstnm = str(probe_data_dict.get('hstnm'))
         return prb_id, hstnm, probe_data_dict
             
     
@@ -109,7 +117,7 @@ async def check_api_key(key: str):
     probe_data_dict = next(iter(probe_data.values()))
     stored_api_key = probe_data_dict.get("api_key")
     
-    if not stored_api_key or bcrypt.checkpw(key, stored_api_key) is False:
+    if not stored_api_key or bcrypt.checkpw(key.encode(), as_bytes(stored_api_key)) is False:
         
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -146,7 +154,7 @@ async def validate_mcp_api_key(headers: dict[str, str]) -> None:
     await check_api_key(key)
     
 async def make_http_request(cmd: str, url: str, payload: dict = {}, api_key: str = None, cookies: str = None, cookie_name: str = None, token: str = None):
-    async with httpx.AsyncClient() as client:
+    async with web_client as client:
         headers={}
         if api_key is not None:
             headers['X-UMJ-WFLW-API-KEY'] = api_key
