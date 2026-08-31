@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, Response
+from fastapi.responses import JSONResponse
+from typing import Union, Dict, Any
 from fastapi_user_limiter.limiter import rate_limiter
 from pydantic import BaseModel
 from init_app import (
@@ -30,7 +32,14 @@ class FlowCall(BaseModel):
     flow: str = None
     name: str = None
     user_id: str = None
-    schedule: str = None
+    # The GUI sends the schedule as a JSON object; a JSON string is still
+    # accepted for backwards compatibility.
+    schedule: Union[str, Dict[str, Any], None] = None
+    # Empty on a new flow. Core mints an id only when this is falsy, so an
+    # existing id must be passed through for an edit to update in place.
+    id: str = None
+    prb_id: str = None
+    type: str = None
 
 mcp_app = mcp.http_app(path="/mcp")
         
@@ -196,46 +205,82 @@ async def exec(tool_calls: ExecuteCall = None):
     main_content+=f"""######################################################################\n\n\n"""
     return Response(content={'output': json.dumps(documents), 'anlys_output': main_content, 'tools': json.dumps(all_tools), 'parsed_output': json.dumps(output_data)}, media_type="application/json", status_code=200)
 
-@api.get("/v1/api/flows/{command}", dependencies=[Depends(validate_api_key), Depends(rate_limiter(4, 10))])
+@api.post("/v1/api/flows/{command}", dependencies=[Depends(validate_api_key), Depends(rate_limiter(4, 10))])
 async def flows(command: str, flow_calls: FlowCall = None):
+    if flow_calls is None:
+        return Response(status_code=400)
     probe_data = await get_probe_data()
     match command:
         case 'new':
+            # Core mints an id only when it receives a falsy one; 'default'
+            # is truthy and every flow would collide at $.flows.default.
+            schedule = flow_calls.schedule
+            if isinstance(schedule, str):
+                try:
+                    schedule = json.loads(schedule) if schedule.strip() else {}
+                except json.JSONDecodeError:
+                    logger.warning(f"Invalid schedule JSON: {schedule!r}")
+                    schedule = {}
+            schedule = schedule or {}
+
             flow_payload = {
                 'prb_id': probe_data.get('prb_id'),
+                'name': flow_calls.name,
                 'flow': flow_calls.flow,
                 'user_id': flow_calls.user_id,
-                'schedule': flow_calls.schedule,
-                'id': 'default'
+                'schedule': schedule,
+                'id': flow_calls.id or ''
             }
             job1 = None 
             now = datetime.now(tz=timezone.utc).isoformat()
             job_comment=f"auto_job:{probe_data.get('prb_id')}:{flow_calls.name}:{now}:{str(uuid.uuid4())}"
             task_command = ""
             script_path = os.path.join(automation_scripts_path, f'FlowRunner.py')
+            # shlex.quote already adds the quoting; wrapping the result in
+            # another pair of single quotes breaks the argument.
             flow_shlex = shlex.quote(str(flow_calls.flow))
             comment_shlex = shlex.quote(str(job_comment))
-            task_command = f"python3 {script_path} -f '{flow_shlex}' -n '{comment_shlex}'"
+            task_command = f"python3 {script_path} -f {flow_shlex} -n {comment_shlex}"
             job1 = await asyncio.to_thread(cron.new, command=task_command, comment=job_comment)
-            scheduled_job = await asyncio.to_thread(schedule_cronjob, job1, json.loads(flow_calls.schedule))
+            scheduled_job = await asyncio.to_thread(schedule_cronjob, job1, schedule)
             if await asyncio.to_thread(scheduled_job.is_valid):
                 await asyncio.to_thread(cron.write)
                 flow_payload['comment'] = job_comment
                 init_url = f"{core_url}/init"
                 flow_url = f"{core_url}/flow/new"
-                async def flow_upload(payload: dict = {}):
+                async def flow_upload(payload: dict = None):
+                    payload = payload if payload is not None else {}
                     resp_data = await make_http_request(cmd="g", url=init_url, api_key=os.getenv('UMJ_WFLW_API_KEY'))
-                    if resp_data.status_code == 200:
-                        access_token = resp_data.cookies.get("access_token")
-                        flow_rqst = await make_http_request(
-                                cmd="p",
-                                url=flow_url,
-                                payload=payload,
-                                token=access_token
-                            )
-                        return flow_rqst.status_code
-                if await flow_upload(payload=flow_payload) == 200:
-                    return Response(status_code=200)
+                    if resp_data.status_code != 200:
+                        logger.error(f"Core init failed: {resp_data.status_code}")
+                        return resp_data.status_code, None
+                    access_token = resp_data.cookies.get("access_token")
+                    # Core's /probes/flow/new authenticates on the API key
+                    # header; the bearer token alone gets a 401.
+                    flow_rqst = await make_http_request(
+                            cmd="p",
+                            url=flow_url,
+                            payload=payload,
+                            api_key=os.getenv('UMJ_WFLW_API_KEY'),
+                            token=access_token
+                        )
+                    if flow_rqst.status_code != 200:
+                        logger.error(f"Core flow upload failed: {flow_rqst.status_code} {flow_rqst.text}")
+                        return flow_rqst.status_code, None
+                    try:
+                        return flow_rqst.status_code, flow_rqst.json()
+                    except ValueError:
+                        return flow_rqst.status_code, None
+
+                upload_status, upload_body = await flow_upload(payload=flow_payload)
+                if upload_status == 200:
+                    # Hand the id core assigned back to the caller so the GUI
+                    # can store the flow under the same key.
+                    return JSONResponse(
+                        status_code=200,
+                        content={'id': (upload_body or {}).get('id') or flow_payload['id'],
+                                 'comment': job_comment}
+                    )
                 else:
                     return Response(status_code=400)
             else:

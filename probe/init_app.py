@@ -153,20 +153,23 @@ async def validate_mcp_api_key(headers: dict[str, str]) -> None:
         )
     await check_api_key(key)
     
-async def make_http_request(cmd: str, url: str, payload: dict = {}, api_key: str = None, cookies: str = None, cookie_name: str = None, token: str = None):
-    async with web_client as client:
-        headers={}
-        if api_key is not None:
-            headers['X-UMJ-WFLW-API-KEY'] = api_key
-        if token is not None:
-            headers['Authorization'] = f'Bearer {token}'
-        if cookies is not None:
-            client.cookies.set(cookie_name, value=cookies)
-        match cmd:
-            case 'p':
-                headers['Content-Type'] = 'application/json'
-                post_result = await client.post(url, json=payload, headers=headers)
-                return post_result
-            case 'g':
-                get_result = await client.get(url, headers=headers)
-                return get_result
+async def make_http_request(cmd: str, url: str, payload: dict = None, api_key: str = None, cookies: str = None, cookie_name: str = None, token: str = None):
+    # Deliberately not `async with`: web_client is a module-level AsyncClient
+    # and the context manager would close it after the first request.
+    client = web_client
+    headers={}
+    if api_key is not None:
+        headers['X-UMJ-WFLW-API-KEY'] = api_key
+    if token is not None:
+        headers['Authorization'] = f'Bearer {token}'
+    if cookies is not None:
+        client.cookies.set(cookie_name, value=cookies)
+    payload = payload if payload is not None else {}
+    match cmd:
+        case 'p':
+            headers['Content-Type'] = 'application/json'
+            post_result = await client.post(url, json=payload, headers=headers)
+            return post_result
+        case 'g':
+            get_result = await client.get(url, headers=headers)
+            return get_result
