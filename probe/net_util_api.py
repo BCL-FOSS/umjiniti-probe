@@ -213,7 +213,9 @@ async def flows(command: str, flow_calls: FlowCall = None):
             job_comment=f"auto_job:{probe_data.get('prb_id')}:{flow_calls.name}:{now}:{str(uuid.uuid4())}"
             task_command = ""
             script_path = os.path.join(automation_scripts_path, f'FlowRunner.py')
-            task_command = f"python3 {script_path} -f '{flow_calls.flow}' -n '{job_comment}'"
+            flow_shlex = shlex.quote(str(flow_calls.flow))
+            comment_shlex = shlex.quote(str(job_comment))
+            task_command = f"python3 {script_path} -f '{flow_shlex}' -n '{comment_shlex}'"
             job1 = await asyncio.to_thread(cron.new, command=task_command, comment=job_comment)
             scheduled_job = await asyncio.to_thread(schedule_cronjob, job1, json.loads(flow_calls.schedule))
             if await asyncio.to_thread(scheduled_job.is_valid):
